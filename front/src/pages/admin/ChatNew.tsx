@@ -37,6 +37,7 @@ export default function ChatNew() {
   }, [messages.length]);
 
   const canSend = useMemo(() => input.trim().length > 0, [input]);
+  const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "";
 
   const send = async () => {
     if (!canSend) return;
@@ -45,7 +46,7 @@ export default function ChatNew() {
     setMessages((prev) => [...prev, { role: "user", content: userText }]);
 
     try {
-      const res = await fetch(`/api/threads/new/chat`, {
+      const res = await fetch(`${API_BASE}/api/threads/new/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userText, category: mode }),

@@ -63,6 +63,7 @@ gcloud iam service-accounts keys create ~/github-actions-key.json \
 Add these secrets to your GitHub repository (Settings > Secrets and variables > Actions):
 
 - `GCP_SA_KEY`: Content of `~/github-actions-key.json`
+- `GEMINI_API_KEY`: Google Generative AI API key (backend only)
 - `VITE_API_BASE_URL`: Your production API URL (e.g., `https://api.yourdomain.com`)
 
 #### 3. Deploy
