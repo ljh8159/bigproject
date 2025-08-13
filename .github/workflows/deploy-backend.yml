@@ -32,6 +32,14 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
+      - name: Ensure Artifact Registry repo exists
+        run: |
+          EXIST=$(gcloud artifacts repositories list --location=${{ env.REGION }} --format='value(name)' | grep "/${{ env.ARTIFACT_REPO }}$" || true)
+          if [ -z "$EXIST" ]; then
+            gcloud artifacts repositories create ${{ env.ARTIFACT_REPO }} \
+              --repository-format=docker --location=${{ env.REGION }}
+          fi
+
       - name: Build and push image
         working-directory: ./back
         env:
