@@ -37,7 +37,8 @@ export default function ChatNew() {
   }, [messages.length]);
 
   const canSend = useMemo(() => input.trim().length > 0, [input]);
-  const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "";
+  const RAW_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "";
+  const API_BASE = RAW_BASE.replace(/\/+$/, "");
 
   const send = async () => {
     if (!canSend) return;
