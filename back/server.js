@@ -11,6 +11,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 app.use(cors());
 app.use(express.json());
+// Explicitly handle CORS preflight for all routes
+app.options('*', cors());
 
 // Initialize DB
 const db = new Database('chat.db');
@@ -80,7 +82,8 @@ app.post('/api/threads/:id/chat', async (req, res) => {
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({ error: 'Server missing GEMINI_API_KEY' });
     }
-    const threadId = req.params.id;
+    const incomingId = req.params.id;
+    const threadId = incomingId === 'new' ? nanoid() : incomingId;
     let thread = getThread.get(threadId);
     if (!thread) {
       insertThread.run(threadId, req.body.title || '새 채팅', req.body.category || 'general', now());
@@ -101,7 +104,7 @@ app.post('/api/threads/:id/chat', async (req, res) => {
     const botMsgId = nanoid();
     insertMessage.run(botMsgId, threadId, 'model', text, now());
 
-    res.json({ reply: text, messageId: botMsgId });
+    res.json({ reply: text, messageId: botMsgId, threadId });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e) });

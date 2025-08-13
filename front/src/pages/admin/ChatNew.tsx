@@ -56,6 +56,9 @@ export default function ChatNew() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const text = data?.reply || "죄송합니다. 응답을 생성하지 못했습니다.";
+      if (data?.threadId) {
+        // future: you can route to this thread's messages
+      }
       setMessages((prev) => [...prev, { role: "model", content: text }]);
     } catch (err: any) {
       console.error(err);
