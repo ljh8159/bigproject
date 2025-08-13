@@ -50,12 +50,25 @@ jobs:
     - name: Configure Docker for Artifact Registry
       run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-    - name: Build and push Docker image
+    - name: Build and push Docker image (with retries)
       working-directory: ./front
+      env:
+        REG_HOST: ${{ env.REGION }}-docker.pkg.dev
+        IMAGE_URI: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
       run: |
-        IMAGE_URI=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
-        docker build -t $IMAGE_URI .
-        docker push $IMAGE_URI
+        set -e
+        echo "Building image: $IMAGE_URI"
+        docker build -t "$IMAGE_URI" .
+        echo "Pushing image with retries..."
+        for attempt in 1 2 3; do
+          if docker push "$IMAGE_URI"; then
+            echo "Push succeeded on attempt $attempt"; break
+          fi
+          echo "Push failed on attempt $attempt; re-authenticating and retrying in 10s..."
+          gcloud auth configure-docker "$REG_HOST" --quiet
+          gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://"$REG_HOST" || true
+          sleep 10
+        done
 
     - name: Deploy to Cloud Run
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
