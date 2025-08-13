@@ -55,10 +55,13 @@ jobs:
       env:
         REG_HOST: ${{ env.REGION }}-docker.pkg.dev
         IMAGE_URI: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
       run: |
         set -e
         echo "Building image: $IMAGE_URI"
-        docker build -t "$IMAGE_URI" .
+        docker build \
+          --build-arg VITE_API_BASE_URL="$VITE_API_BASE_URL" \
+          -t "$IMAGE_URI" .
         echo "Pushing image with retries..."
         for attempt in 1 2 3; do
           if docker push "$IMAGE_URI"; then
