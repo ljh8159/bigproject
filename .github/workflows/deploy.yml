@@ -8,7 +8,7 @@ on:
 
 env:
   PROJECT_ID: steam-treat-466702-g9
-  REGION: asia-northeast3
+  REGION: asia-northeast1
   SERVICE_NAME: bigpro-frontend
   ARTIFACT_REPO: frontend
 
