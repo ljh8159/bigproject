@@ -34,8 +34,7 @@ jobs:
 
       - name: Ensure Artifact Registry repo exists
         run: |
-          EXIST=$(gcloud artifacts repositories list --location=${{ env.REGION }} --format='value(name)' | grep "/${{ env.ARTIFACT_REPO }}$" || true)
-          if [ -z "$EXIST" ]; then
+          if ! gcloud artifacts repositories describe ${{ env.ARTIFACT_REPO }} --location=${{ env.REGION }} >/dev/null 2>&1; then
             gcloud artifacts repositories create ${{ env.ARTIFACT_REPO }} \
               --repository-format=docker --location=${{ env.REGION }}
           fi
