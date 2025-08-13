@@ -16,7 +16,7 @@ interface ChatMsg {
 }
 
 export default function ChatNew() {
-  const [apiKey, setApiKey] = useState("");
+  // API 키 제거: 백엔드 호출 사용
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMsg[]>([
     {
@@ -30,10 +30,7 @@ export default function ChatNew() {
   type Mode = "proactive" | "general";
   const [mode, setMode] = useState<Mode>("proactive");
 
-  useEffect(() => {
-    const saved = localStorage.getItem("GEMINI_API_KEY") || "";
-    setApiKey(saved);
-  }, []);
+  useEffect(() => {}, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -43,38 +40,20 @@ export default function ChatNew() {
 
   const send = async () => {
     if (!canSend) return;
-    if (!apiKey) {
-      toast({
-        title: "Gemini API 키가 필요합니다",
-        description: "상단 입력란에 키를 입력하고 저장하세요.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const userText = input.trim();
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: userText }]);
 
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              { role: "user", parts: [{ text: userText }] },
-            ],
-          }),
-        }
-      );
+      const res = await fetch(`/api/threads/new/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: userText, category: mode }),
+      });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const text =
-        data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("\n") ||
-        "죄송합니다. 응답을 생성하지 못했습니다.";
+      const text = data?.reply || "죄송합니다. 응답을 생성하지 못했습니다.";
       setMessages((prev) => [...prev, { role: "model", content: text }]);
     } catch (err: any) {
       console.error(err);
@@ -86,32 +65,11 @@ export default function ChatNew() {
     }
   };
 
-  const saveKey = () => {
-    localStorage.setItem("GEMINI_API_KEY", apiKey);
-    toast({ title: "Gemini API 키 저장됨" });
-  };
-
   return (
     <div className="flex h-[calc(100vh-5.5rem)] flex-col space-y-4 overflow-hidden">
       <SEO title="새 챗 - Gemini 연결 | Celefix" description="Gemini와 연결된 신규 채팅" />
 
-      {/* 안내 영역: 키 입력 */}
-      <section className="rounded-lg border border-border bg-card p-4 flex-shrink-0">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="text-sm text-muted-foreground">
-            Gemini API 키를 입력하면 바로 대화할 수 있어요. 보안상 키는 브라우저 로컬에만 저장됩니다. (권장: Supabase 비밀 사용)
-          </div>
-          <div className="flex w-full gap-2 sm:w-auto sm:flex-1">
-            <Input
-              placeholder="AIza..."
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="font-mono"
-            />
-            <Button onClick={saveKey} variant="outline">저장</Button>
-          </div>
-        </div>
-      </section>
+      {/* 안내 영역 제거 (백엔드 사용) */}
 
       {/* 채팅 박스 */}
       <section className="flex flex-1 overflow-hidden rounded-xl border border-border bg-card">
