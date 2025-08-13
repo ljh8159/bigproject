@@ -6,10 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
-import { Bot, MessageSquarePlus, Send, Search, Lightbulb, Star, Users, Reply } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu";
-import { SlidersHorizontal } from "lucide-react";
+import { Bot, MessageSquarePlus, Send, Search, Lightbulb, Star } from "lucide-react";
 interface ChatMsg {
   role: "user" | "model";
   content: string;
@@ -27,8 +24,9 @@ export default function ChatNew() {
   ]);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // 카테고리는 기본값만 유지(옵션 제거)
   type Mode = "proactive" | "general";
-  const [mode, setMode] = useState<Mode>("proactive");
+  const [mode] = useState<Mode>("proactive");
   const [threadId, setThreadId] = useState<string | null>(null);
   const [threads, setThreads] = useState<{ id: string; title: string; category: string; created_at: number }[]>([]);
 
@@ -54,7 +52,8 @@ export default function ChatNew() {
     setMessages((prev) => [...prev, { role: "user", content: userText }]);
 
     try {
-      const res = await fetch(`${API_BASE}/api/threads/new/chat`, {
+      const url = threadId ? `${API_BASE}/api/threads/${threadId}/chat` : `${API_BASE}/api/threads/new/chat`;
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userText, category: mode }),
@@ -63,10 +62,9 @@ export default function ChatNew() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const text = data?.reply || "죄송합니다. 응답을 생성하지 못했습니다.";
-      if (data?.threadId) {
-        setThreadId(data.threadId);
-        fetch(`${API_BASE}/api/threads`).then(r=>r.json()).then(d=>setThreads(d.threads||[])).catch(()=>{});
-      }
+      if (data?.threadId) setThreadId(data.threadId);
+      // 처음 생성된 경우에만 목록 갱신
+      fetch(`${API_BASE}/api/threads`).then(r=>r.json()).then(d=>setThreads(d.threads||[])).catch(()=>{});
       setMessages((prev) => [...prev, { role: "model", content: text }]);
     } catch (err: any) {
       console.error(err);
@@ -137,34 +135,7 @@ export default function ChatNew() {
               </ul>
             </div>
 
-            {/* 일반 라인업 추천 */}
-            <div className="category-section">
-              <div className="category-header mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="category-icon grid h-6 w-6 place-items-center rounded bg-info/15 text-[hsl(var(--info))]">
-                    <Users className="h-3.5 w-3.5" />
-                  </div>
-                  <h3 className="text-sm font-semibold text-[hsl(var(--info))]">일반 라인업 추천</h3>
-                </div>
-                <Reply className="h-3.5 w-3.5 text-[hsl(var(--info))]" />
-              </div>
-              <ul className="space-y-2">
-                <li className="chat-item cursor-pointer rounded-md border border-border bg-muted/30 p-3 transition hover:bg-muted/40">
-                  <Link to="/admin/chat/dashboard?thread=seoul" className="block">
-                    <div className="text-sm font-medium">서울대 축제 제안</div>
-                    <div className="truncate text-xs text-muted-foreground">축제 라인업 추천 및 분석</div>
-                  </Link>
-                </li>
-                <li className="chat-item cursor-pointer rounded-md border border-border bg-muted/30 p-3 transition hover:bg-muted/40">
-                  <div className="text-sm font-medium">부산 음악 페스티벌</div>
-                  <div className="truncate text-xs text-muted-foreground">해외 아티스트 섭외 논의</div>
-                </li>
-                <li className="chat-item cursor-pointer rounded-md border border-border bg-muted/30 p-3 transition hover:bg-muted/40">
-                  <div className="text-sm font-medium">고려대 가을 축제</div>
-                  <div className="truncate text-xs text-muted-foreground">힙합 아티스트 라인업 추천</div>
-                </li>
-              </ul>
-            </div>
+            {/* 일반 라인업 추천 섹션 제거 */}
 
             <Separator className="my-3" />
 
@@ -178,7 +149,22 @@ export default function ChatNew() {
                   <li
                     key={t.id}
                     className="chat-item cursor-pointer rounded-md border border-border bg-muted/30 p-3 transition hover:bg-muted/40"
-                    onClick={() => setThreadId(t.id)}
+                    onClick={async () => {
+                      setThreadId(t.id);
+                      // 메시지 불러오기
+                      try {
+                        const r = await fetch(`${API_BASE}/api/threads/${t.id}/messages`);
+                        const d = await r.json();
+                        const loaded: ChatMsg[] = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content }));
+                        if (loaded.length === 0) {
+                          setMessages([{ role: 'model', content: '이 대화에는 아직 메시지가 없습니다.' }]);
+                        } else {
+                          setMessages(loaded);
+                        }
+                      } catch {
+                        setMessages([{ role: 'model', content: '대화 불러오기에 실패했습니다.' }]);
+                      }
+                    }}
                   >
                     <div className="text-sm font-medium truncate" title={t.title}>
                       {t.title}
@@ -198,25 +184,7 @@ export default function ChatNew() {
             <div className="flex items-center gap-2">
               <Bot className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold">새 채팅</h2>
-              <Badge variant="secondary" className="ml-1">
-                {mode === "proactive" ? "선제 제안" : "일반 라인업 추천"}
-              </Badge>
             </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2" aria-label="채팅 옵션">
-                  <SlidersHorizontal className="h-4 w-4" />
-                  옵션
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="z-50">
-                <DropdownMenuRadioGroup value={mode} onValueChange={(v) => setMode(v as Mode)}>
-                  <DropdownMenuRadioItem value="proactive">선제 제안</DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="general">일반 라인업 추천</DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </header>
 
           <div ref={listRef} className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
