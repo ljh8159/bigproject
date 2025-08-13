@@ -39,11 +39,28 @@ const now = () => Date.now();
 const getThread = db.prepare('SELECT * FROM threads WHERE id = ?');
 const listThreads = db.prepare('SELECT * FROM threads ORDER BY created_at DESC');
 const insertThread = db.prepare('INSERT INTO threads (id, title, category, created_at) VALUES (?, ?, ?, ?)');
+const updateThreadTitle = db.prepare('UPDATE threads SET title = ? WHERE id = ?');
 const deleteThreadStmt = db.prepare('DELETE FROM threads WHERE id = ?');
 
 const listMessages = db.prepare('SELECT * FROM messages WHERE thread_id = ? ORDER BY created_at ASC');
 const insertMessage = db.prepare('INSERT INTO messages (id, thread_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)');
 const deleteMessageStmt = db.prepare('DELETE FROM messages WHERE id = ? AND thread_id = ?');
+
+async function generateTitleFromText(userText) {
+  const base = String(userText || '').trim();
+  const fallback = base.slice(0, 24) || '새 채팅';
+  if (!process.env.GEMINI_API_KEY) return fallback;
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const prompt = `문장: "${base}"
+간결하고 의미를 잘 담은 한국어 제목을 만들어 주세요. 16자 이내, 구어체 금지, 특수문자 금지.`;
+    const r = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+    const title = (r.response.text() || '').replace(/\n/g, ' ').trim().slice(0, 24);
+    return title || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 // Health and root
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -66,6 +83,15 @@ app.delete('/api/threads/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+app.patch('/api/threads/:id', (req, res) => {
+  const { title } = req.body || {};
+  if (!title || String(title).trim().length === 0) {
+    return res.status(400).json({ error: 'title required' });
+  }
+  updateThreadTitle.run(String(title).trim().slice(0, 80), req.params.id);
+  res.json({ ok: true });
+});
+
 // Messages
 app.get('/api/threads/:id/messages', (req, res) => {
   res.json({ messages: listMessages.all(req.params.id) });
@@ -85,13 +111,13 @@ app.post('/api/threads/:id/chat', async (req, res) => {
     const incomingId = req.params.id;
     const threadId = incomingId === 'new' ? nanoid() : incomingId;
     let thread = getThread.get(threadId);
-    if (!thread) {
-      insertThread.run(threadId, req.body.title || '새 채팅', req.body.category || 'general', now());
-      thread = getThread.get(threadId);
-    }
-
     const userText = String(req.body?.message || '').trim();
     if (!userText) return res.status(400).json({ error: 'message required' });
+    if (!thread) {
+      const derivedTitle = (req.body.title || (await generateTitleFromText(userText))).trim() || '새 채팅';
+      insertThread.run(threadId, derivedTitle, req.body.category || 'chat', now());
+      thread = getThread.get(threadId);
+    }
 
     // Persist user message
     const userMsgId = nanoid();

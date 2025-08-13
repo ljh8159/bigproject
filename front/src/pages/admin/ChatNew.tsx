@@ -29,8 +29,15 @@ export default function ChatNew() {
 
   type Mode = "proactive" | "general";
   const [mode, setMode] = useState<Mode>("proactive");
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [threads, setThreads] = useState<{ id: string; title: string; category: string; created_at: number }[]>([]);
 
-  useEffect(() => {}, []);
+  useEffect(() => {
+    fetch(`${API_BASE}/api/threads`)
+      .then((r) => r.json())
+      .then((d) => setThreads(d.threads || []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
@@ -57,7 +64,8 @@ export default function ChatNew() {
       const data = await res.json();
       const text = data?.reply || "죄송합니다. 응답을 생성하지 못했습니다.";
       if (data?.threadId) {
-        // future: you can route to this thread's messages
+        setThreadId(data.threadId);
+        fetch(`${API_BASE}/api/threads`).then(r=>r.json()).then(d=>setThreads(d.threads||[])).catch(()=>{});
       }
       setMessages((prev) => [...prev, { role: "model", content: text }]);
     } catch (err: any) {
@@ -81,7 +89,16 @@ export default function ChatNew() {
         {/* 좌측 사이드바 */}
         <aside className="sidebar hidden w-1/4 min-w-[260px] border-r border-border bg-muted/30 p-4 lg:block">
           {/* 새 채팅 버튼 */}
-          <Button variant="outline" className="mb-4 w-full justify-center gap-2 border-primary text-primary hover:bg-primary/10">
+          <Button
+            variant="outline"
+            className="mb-4 w-full justify-center gap-2 border-primary text-primary hover:bg-primary/10"
+            onClick={() => {
+              setThreadId(null);
+              setMessages([
+                { role: 'model', content: '새 챗이 시작되었습니다. 제안서를 준비하거나 라인업을 추천해드릴게요. 메시지를 입력해보세요!' },
+              ]);
+            }}
+          >
             <MessageSquarePlus className="h-4 w-4" /> 새 채팅 시작하기
           </Button>
           {/* 검색 */}
@@ -150,6 +167,27 @@ export default function ChatNew() {
             </div>
 
             <Separator className="my-3" />
+
+            {/* 사용자 채팅 기록 */}
+            <div className="category-section">
+              <div className="category-header mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">일반 채팅 기록</h3>
+              </div>
+              <ul className="space-y-2">
+                {threads.map((t) => (
+                  <li
+                    key={t.id}
+                    className="chat-item cursor-pointer rounded-md border border-border bg-muted/30 p-3 transition hover:bg-muted/40"
+                    onClick={() => setThreadId(t.id)}
+                  >
+                    <div className="text-sm font-medium truncate" title={t.title}>
+                      {t.title}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">{t.category}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
           </div>
         </aside>
