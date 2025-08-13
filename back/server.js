@@ -43,8 +43,9 @@ const listMessages = db.prepare('SELECT * FROM messages WHERE thread_id = ? ORDE
 const insertMessage = db.prepare('INSERT INTO messages (id, thread_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)');
 const deleteMessageStmt = db.prepare('DELETE FROM messages WHERE id = ? AND thread_id = ?');
 
-// Health
+// Health and root
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+app.get('/', (_req, res) => res.type('text/plain').send('Backend is running. Use /api/health or POST /api/threads/:id/chat'));
 
 // Threads
 app.get('/api/threads', (_req, res) => {
