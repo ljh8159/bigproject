@@ -445,6 +445,143 @@ app.post('/api/lineup', async (req, res) => {
   }
 });
 
+// Search with LLM-agent: Gemini can call a DB tool to fetch artists, then decide lineup itself
+app.post('/api/lineup-agent', async (req, res) => {
+  try {
+    const { mood = '신나는', budget = 50000000, count = 3, festival = '', genre = '' } = req.body || {};
+
+    // Cloud SQL connection
+    const connector = new Connector();
+    const connection = await connector.getOptions({ instanceConnectionName: process.env.PG_CONNECTION_NAME });
+    const pool = new pg.Pool({
+      ...connection,
+      user: process.env.PG_USER || 'postgres',
+      password: process.env.PG_PASS,
+      database: process.env.PG_DATABASE || 'artist',
+    });
+
+    // Tool: queryArtists
+    async function queryArtistsTool(args) {
+      const { genre: g, maxFee, limit = 50 } = args || {};
+      const lim = Math.min(Math.max(Number(limit) || 10, 1), 100);
+      const fee = Math.max(Number(maxFee) || budget, 1);
+      const clauses = ['appearance_fee <= $1'];
+      const params = [fee];
+      if (g && String(g).trim()) {
+        clauses.push('genre ILIKE $2');
+        params.push(`%${g}%`);
+      }
+      const q = await pool.query(
+        `SELECT id,name,genre,appearance_fee,company_name FROM artist_clean
+         WHERE ${clauses.join(' AND ')}
+         ORDER BY appearance_fee DESC
+         LIMIT ${lim}`,
+        params
+      );
+      return q.rows || [];
+    }
+
+    const tools = [{
+      functionDeclarations: [
+        {
+          name: 'queryArtists',
+          description: 'Query artists by optional genre and max fee. Returns an array of rows with id, name, genre, appearance_fee, company_name',
+          parameters: {
+            type: 'OBJECT',
+            properties: {
+              genre: { type: 'STRING' },
+              maxFee: { type: 'NUMBER' },
+              limit: { type: 'NUMBER' },
+            },
+          },
+        },
+      ],
+    }];
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro', tools });
+    const sys = [
+      `당신은 행사 라인업 기획자입니다.`,
+      `목표: 예산(${budget}) 이하에서 정확히 ${count}팀을 선택.`,
+      `필요하면 queryArtists 함수를 호출하여 DB에서 후보를 조회하세요.`,
+      `출력은 반드시 JSON: {"lineup":[{"id":number,"fee":number}],"total_fee":number}`,
+    ].join('\n');
+
+    const userPrompt = [
+      `festival=${festival || ''}`,
+      `mood=${mood || ''}`,
+      `genre=${genre || ''}`,
+      `budget=${budget}`,
+      `count=${count}`,
+      `먼저 적합한 후보를 queryArtists로 조회한 후, 섭외비를 고려해 최종 lineup을 선택하세요.`,
+    ].join('\n');
+
+    // 1st turn
+    let r1 = await model.generateContent({
+      contents: [
+        { role: 'user', parts: [{ text: sys }] },
+        { role: 'user', parts: [{ text: userPrompt }] },
+      ],
+    });
+
+    function extractFunctionCalls(resp) {
+      const calls = [];
+      try {
+        const cands = resp.response?.candidates || [];
+        for (const c of cands) {
+          const parts = c.content?.parts || [];
+          for (const p of parts) {
+            if (p.functionCall) calls.push(p.functionCall);
+          }
+        }
+      } catch {}
+      return calls;
+    }
+
+    const calls = extractFunctionCalls(r1);
+    let final;
+    if (calls.length > 0) {
+      const call = calls[0];
+      let toolResult = [];
+      if (call.name === 'queryArtists') {
+        const args = call.args || call.arguments || {};
+        toolResult = await queryArtistsTool({
+          genre: args.genre ?? genre,
+          maxFee: args.maxFee ?? budget,
+          limit: args.limit ?? 50,
+        });
+      }
+
+      // 2nd turn with tool response
+      const r2 = await model.generateContent({
+        contents: [
+          { role: 'user', parts: [{ text: sys }] },
+          { role: 'user', parts: [{ text: userPrompt }] },
+          { role: 'model', parts: [{ functionCall: call }] },
+          { role: 'tool', parts: [{ functionResponse: { name: call.name, response: toolResult } }] },
+        ],
+      });
+      final = (r2.response?.text?.() || '').trim();
+    } else {
+      final = (r1.response?.text?.() || '').trim();
+    }
+
+    await pool.end();
+    await connector.close();
+
+    // Try to parse JSON result
+    const cleaned = final.replace(/```json|```/g, '').trim();
+    let parsed;
+    try { parsed = JSON.parse(cleaned); } catch {}
+    if (parsed && Array.isArray(parsed.lineup)) {
+      return res.json({ ok: true, result: parsed, raw: final });
+    }
+    return res.json({ ok: true, result_raw: final });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`);
 });
