@@ -143,16 +143,37 @@ app.post('/api/threads/:id/chat', async (req, res) => {
 // Search + Generate lineup
 app.post('/api/lineup', async (req, res) => {
   try {
-    const { mood = '신나는', budget = 50000000, count = 3, festival = '' } = req.body || {};
+    const { mood = '신나는', budget = 50000000, count = 3, festival = '', genre = '' } = req.body || {};
 
     // 1) get query embedding
     const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
     // 일부 환경에서 비 ASCII 문자가 포함된 문자열을 bytes로 변환할 때 예외가 발생하는 문제가 있어
     // 임베딩 입력은 ASCII 범위로 정규화해 사용합니다.
     const normalizeAscii = (v) => String(v ?? '').replace(/[^\x00-\x7F]/g, '');
-    const asciiMood = normalizeAscii(mood) || 'upbeat';
+    const mapKoreanMood = (m) => {
+      const s = String(m||'').toLowerCase();
+      if (s.includes('신나')) return 'upbeat';
+      if (s.includes('차분')||s.includes('발라드')) return 'calm';
+      if (s.includes('감성')) return 'sentimental';
+      return s || 'upbeat';
+    };
+    const mapKoreanGenre = (g) => {
+      const s = String(g||'').toLowerCase();
+      if (s.includes('댄스')) return 'dance';
+      if (s.includes('발라드')) return 'ballad';
+      if (s.includes('랩') || s.includes('힙합')) return 'hiphop';
+      if (s.includes('r&b') || s.includes('알앤비')) return 'rnb';
+      if (s.includes('록') || s.includes('메탈')) return 'rock';
+      if (s.includes('인디')) return 'indie';
+      if (s.includes('트로트') || s.includes('성인가요')) return 'trot';
+      if (s.includes('포크') || s.includes('블루스')) return 'folk';
+      if (s.includes('pop') || s.includes('팝')) return 'pop';
+      return '';
+    };
+    const asciiMood = normalizeAscii(mapKoreanMood(mood));
     const asciiFestival = normalizeAscii(festival) || 'festival';
-    const queryText = `festival:${asciiFestival} mood:${asciiMood} budget:${budget} count:${count}`;
+    const asciiGenre = normalizeAscii(mapKoreanGenre(genre));
+    const queryText = `festival:${asciiFestival} mood:${asciiMood}${asciiGenre?` genre:${asciiGenre}`:''} budget:${budget} count:${count}`;
     const emb = await embedModel.embedContent({ content: { parts: [{ text: queryText }] } });
     const qvec = emb.embedding.values;
 
@@ -168,18 +189,43 @@ app.post('/api/lineup', async (req, res) => {
       database: process.env.PG_DATABASE || 'artist',
     });
 
-    const topK = Math.max(count * 5, 15);
+    const topK = Math.max(count * 50, 100);
     // pg는 기본적으로 다중 문장을 한 번에 실행하지 않습니다. SET과 SELECT를 분리합니다.
     await pool.query('SET ivfflat.probes = 10');
     // pgvector는 벡터 리터럴 문자열('[v1,v2,...]')을 전달하고 ::vector로 캐스팅하는 것이 안전합니다.
     const vecLiteral = `[${qvec.join(',')}]`;
+    const where = [ 'appearance_fee <= $2' ];
+    const params = [vecLiteral, budget, topK];
+    if (genre && String(genre).trim()) {
+      // Allow multiple genres separated by comma or slash; match Korean/English synonyms
+      const raw = String(genre).split(/[\/,|\s]+/).filter(Boolean);
+      const synonyms = (g) => {
+        const s = g.toLowerCase();
+        if (s.includes('댄스') || s.includes('dance')) return ['댄스', 'dance'];
+        if (s.includes('발라드') || s.includes('ballad')) return ['발라드', 'ballad'];
+        if (s.includes('힙합') || s.includes('랩') || s.includes('hiphop') || s.includes('rap')) return ['랩/힙합', '힙합', '랩', 'hiphop', 'rap'];
+        if (s.includes('soul') || s.includes('알앤비') || s.includes('r&b')) return ['R&B/Soul', 'soul', 'R&B'];
+        if (s.includes('록') || s.includes('메탈') || s.includes('rock') || s.includes('metal')) return ['록/메탈', 'rock', 'metal'];
+        if (s.includes('인디') || s.includes('indie')) return ['인디음악', 'indie'];
+        if (s.includes('트로트') || s.includes('성인가요')) return ['성인가요/트로트', '트로트'];
+        if (s.includes('포크') || s.includes('블루스') || s.includes('folk') || s.includes('blues')) return ['포크/블루스', 'folk', 'blues'];
+        if (s.includes('pop') || s.includes('팝')) return ['POP', 'pop'];
+        return [g];
+      };
+      const flat = raw.flatMap(synonyms);
+      if (flat.length > 0) {
+        const startIdx = params.length + 1;
+        where.push('(' + flat.map((_, i) => `genre ILIKE $${startIdx + i}`).join(' OR ') + ')');
+        for (const g of flat) params.push(`%${g}%`);
+      }
+    }
     const { rows: candidates } = await pool.query(
       `SELECT id,name,genre,appearance_fee,company_name
        FROM artist_clean
-       WHERE appearance_fee <= $2
+       WHERE ${where.join(' AND ')}
        ORDER BY embedding <=> $1::vector
        LIMIT $3`,
-      [vecLiteral, budget, topK]
+      params
     );
 
     await pool.end();
