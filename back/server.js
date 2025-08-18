@@ -219,7 +219,7 @@ app.post('/api/lineup', async (req, res) => {
         for (const g of flat) params.push(`%${g}%`);
       }
     }
-    const { rows: candidates } = await pool.query(
+    const { rows: candidatesVec } = await pool.query(
       `SELECT id,name,genre,appearance_fee,company_name
        FROM artist_clean
        WHERE ${where.join(' AND ')}
@@ -227,6 +227,46 @@ app.post('/api/lineup', async (req, res) => {
        LIMIT $3`,
       params
     );
+
+    // Also collect pure budget/genre candidates (increase budget weight)
+    const where2 = ['appearance_fee <= $1'];
+    const params2 = [budget];
+    if (genre && String(genre).trim()) {
+      const raw2 = String(genre).split(/[\/,|\s]+/).filter(Boolean);
+      const synonyms2 = (g) => {
+        const s = g.toLowerCase();
+        if (s.includes('댄스') || s.includes('dance')) return ['댄스', 'dance'];
+        if (s.includes('발라드') || s.includes('ballad')) return ['발라드', 'ballad'];
+        if (s.includes('힙합') || s.includes('랩') || s.includes('hiphop') || s.includes('rap')) return ['랩/힙합', '힙합', '랩', 'hiphop', 'rap'];
+        if (s.includes('soul') || s.includes('알앤비') || s.includes('r&b')) return ['R&B/Soul', 'soul', 'R&B'];
+        if (s.includes('록') || s.includes('메탈') || s.includes('rock') || s.includes('metal')) return ['록/메탈', 'rock', 'metal'];
+        if (s.includes('인디') || s.includes('indie')) return ['인디음악', 'indie'];
+        if (s.includes('트로트') || s.includes('성인가요')) return ['성인가요/트로트', '트로트'];
+        if (s.includes('포크') || s.includes('블루스') || s.includes('folk') || s.includes('blues')) return ['포크/블루스', 'folk', 'blues'];
+        if (s.includes('pop') || s.includes('팝')) return ['POP', 'pop'];
+        return [g];
+      };
+      const flat2 = raw2.flatMap(synonyms2);
+      if (flat2.length > 0) {
+        const base = params2.length + 1;
+        where2.push('(' + flat2.map((_, i) => `genre ILIKE $${base + i}`).join(' OR ') + ')');
+        for (const g of flat2) params2.push(`%${g}%`);
+      }
+    }
+    const { rows: candidatesBudget } = await pool.query(
+      `SELECT id,name,genre,appearance_fee,company_name
+       FROM artist_clean
+       WHERE ${where2.join(' AND ')}
+       ORDER BY appearance_fee DESC
+       LIMIT 500`,
+      params2
+    );
+
+    // Union candidates (vector + budget)
+    const unionMap = new Map();
+    for (const r of candidatesVec) unionMap.set(Number(r.id), r);
+    for (const r of candidatesBudget) unionMap.set(Number(r.id), r);
+    const candidates = Array.from(unionMap.values());
 
     // Ensure preferred artists are present in candidates
     const preferNames = Array.isArray(prefer) ? prefer.map((n)=>String(n).trim()).filter(Boolean) : [];
