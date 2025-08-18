@@ -86,6 +86,16 @@ export default function ChatNew() {
       }
     }
 
+    // 라인업 관련 키워드는 포함하지만 파싱이 실패한 경우: 안내 메시지 출력 후 종료
+    const wantsLineup = /라인업|추천|섭외|구성/.test(userText);
+    if (wantsLineup && !intent) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'model', content: lineupGuideText() },
+      ]);
+      return;
+    }
+
     try {
       const url = threadId ? `${API_BASE}/api/threads/${threadId}/chat` : `${API_BASE}/api/threads/new/chat`;
       const res = await fetch(url, {
@@ -140,6 +150,15 @@ export default function ChatNew() {
 
     if (!budget || !count || Number.isNaN(count)) return null;
     return { festival, mood, budget, count };
+  }
+
+  function lineupGuideText(): string {
+    return [
+      '라인업 추천을 위해 아래 형식으로 입력해 주세요:',
+      '- 예: 머드 축제에 신나는 분위기로 3명 섭외해줘. 예산은 8천만원.',
+      '- 필수: 예산(예: 5천만원/8천만원/1억), 인원수(예: 3명/3팀/3인)',
+      '- 선택: 행사/축제명, 분위기(예: 신나는/차분한/힙한 등)',
+    ].join('\n');
   }
 
   return (
