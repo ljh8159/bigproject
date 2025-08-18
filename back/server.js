@@ -188,12 +188,26 @@ app.post('/api/lineup', async (req, res) => {
     // 3) Ask Gemini 2.5 Pro to pick final lineup from candidates
     const genModel = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
     const prompt = `Select the best lineup from candidates under budget ${budget} for mood ${asciiMood}. ` +
-      `Return JSON only in schema {"lineup":[{"id":number,"fee":number}],"total_fee":number}.\n` +
+      `Return JSON only (no prose, no markdown fences) in schema {"lineup":[{"id":number,"fee":number}],"total_fee":number}.\n` +
       `candidates:\n` +
       candidates.map(c => `- (${c.id}) fee:${c.appearance_fee}`).join('\n');
     const out = await genModel.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
-    const text = out.response.text();
-    res.json({ candidates, result: text });
+    const raw = out.response.text() || '';
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start !== -1 && end !== -1 && end > start) {
+        try { parsed = JSON.parse(cleaned.slice(start, end + 1)); } catch {}
+      }
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      return res.json({ candidates, result_raw: raw });
+    }
+    res.json({ candidates, result: parsed });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e) });
