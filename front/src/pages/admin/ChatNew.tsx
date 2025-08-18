@@ -69,7 +69,7 @@ export default function ChatNew() {
             for (const c of candidates) idToName.set(Number(c.id), c.name);
             const lines = result.lineup.map((e: { id: number; fee: number }) => `- ${idToName.get(e.id) || e.id} (₩${formatMoney(e.fee)})`);
             const summary = [
-              `추천 라인업 (${intent.festival || '행사'}, ${intent.mood || '분위기'}${intent.genre?`/${intent.genre}`:''} / ${intent.count}명 / 예산 ₩${formatMoney(intent.budget)})`,
+              `추천 라인업 (${intent.festival || '행사'}, ${intent.mood || '분위기'}${intent.genre ? `/${intent.genre}` : ''} / ${intent.count}명 / 예산 ₩${formatMoney(intent.budget)})`,
               ...lines,
               `총액: ₩${formatMoney(result.total_fee || 0)}`,
             ].join('\n');
@@ -128,7 +128,7 @@ export default function ChatNew() {
   function parseLineupIntent(text: string): null | { festival?: string; mood?: string; budget: number; count: number; genre?: string } {
     const t = text.replace(/\s+/g, ' ').trim();
     // 예산: 숫자 + (만원|천만원|억)
-    const budgetRe = /(예산|budget)[^0-9]*([0-9][0-9,]*)\s*(만원|천만원|억)?/i;
+    const budgetRe = /(예산|budget)[^0-9]*(.+)$/i; // 뒤쪽에서 한글 금액 구문 전체를 받아 별도 파싱
     const countRe = /([0-9]+)\s*(명|팀|인)/; // 팀/인도 허용
     const moodRe = /(분위기|mood)[^가-힣a-zA-Z]*([가-힣A-Za-z]+)/i;
     const festivalRe = /([가-힣A-Za-z0-9]+)\s*(축제|페스티벌)/;
@@ -136,12 +136,7 @@ export default function ChatNew() {
 
     let budget = 0;
     const b = t.match(budgetRe);
-    if (b) {
-      const num = Number((b[2] || '0').replace(/,/g, ''));
-      const unit = (b[3] || '').toString();
-      const mul = unit === '만원' ? 10000 : unit === '천만원' ? 10000000 : unit === '억' ? 100000000 : 1;
-      budget = num * mul;
-    }
+    if (b) budget = parseKoreanBudget(b[2] || b[1] || '');
     const c = t.match(countRe);
     const count = c ? Number(c[1]) : NaN;
     const m = t.match(moodRe);
@@ -177,6 +172,34 @@ export default function ChatNew() {
     if (s.includes('포크') || s.includes('블루스') || s.includes('folk') || s.includes('blues')) return '포크/블루스';
     if (s.includes('pop') || s.includes('팝')) return 'POP';
     return v;
+  }
+
+  // 한글 혼합 금액 파서: "2억 2천", "2억2천만원", "8천만원", "5000만원" 등
+  function parseKoreanBudget(raw: string): number {
+    const s = String(raw).replace(/[,\s]/g, '');
+    // 1) x억y천(만원 생략 가능)
+    let m = s.match(/(\d+)억(\d+)천?만?원?/);
+    if (m) return Number(m[1]) * 100000000 + Number(m[2]) * 10000000;
+    // 2) x억
+    m = s.match(/(\d+)억(만?원?)?/);
+    if (m) return Number(m[1]) * 100000000;
+    // 3) y천만원 또는 y천만
+    m = s.match(/(\d+)천만(원)?/);
+    if (m) return Number(m[1]) * 10000000;
+    // 4) z만원
+    m = s.match(/(\d+)만(원)?/);
+    if (m) return Number(m[1]) * 10000;
+    // 5) 숫자 + 선택적 단위 (fallback)
+    m = s.match(/(\d+)(억|천만|만)?/);
+    if (m) {
+      const n = Number(m[1]);
+      const unit = m[2] || '';
+      if (unit.includes('억')) return n * 100000000;
+      if (unit.includes('천만')) return n * 10000000;
+      if (unit.includes('만')) return n * 10000;
+      return n; // 단위 없으면 원 가정
+    }
+    return 0;
   }
 
   return (
