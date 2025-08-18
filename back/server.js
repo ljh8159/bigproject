@@ -185,7 +185,32 @@ app.post('/api/lineup', async (req, res) => {
     await pool.end();
     await connector.close();
 
-    // 3) Ask Gemini 2.5 Pro to pick final lineup from candidates
+    // 3) Deterministic best-spend selection (maximize total_fee <= budget with exactly `count` artists)
+    const fees = candidates.map(c => ({ id: Number(c.id), fee: Number(c.appearance_fee) || 0 }));
+    let bestTotal = -1;
+    let best = [];
+    function choose(start, picked, total) {
+      if (picked.length === count) {
+        if (total <= budget && total > bestTotal) {
+          bestTotal = total;
+          best = [...picked];
+        }
+        return;
+      }
+      if (start >= fees.length) return;
+      for (let i = start; i < fees.length; i++) {
+        const next = fees[i];
+        const newTotal = total + next.fee;
+        if (newTotal > budget) continue; // prune
+        choose(i + 1, [...picked, next], newTotal);
+      }
+    }
+    choose(0, [], 0);
+    if (best.length === count) {
+      return res.json({ candidates, result: { lineup: best, total_fee: bestTotal } });
+    }
+
+    // 4) Ask Gemini 2.5 Pro to pick final lineup from candidates (fallback)
     const genModel = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
     const slim = candidates.map(c => ({ id: Number(c.id), fee: Number(c.appearance_fee) || 0 }));
     const prompt = `From the candidate artists, choose ${count} IDs under total budget ${budget} for mood ${asciiMood}. ` +
