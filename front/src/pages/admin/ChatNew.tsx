@@ -64,6 +64,7 @@ export default function ChatNew() {
           const data = await res.json();
           const candidates: Array<{ id: string; name: string; appearance_fee: string }> = data.candidates || [];
           const result = data.result || {};
+          const lineups = Array.isArray(data.lineups) ? data.lineups : [];
           if (Array.isArray(result.lineup)) {
             const idToName = new Map<number, string>();
             for (const c of candidates) idToName.set(Number(c.id), c.name);
@@ -73,7 +74,8 @@ export default function ChatNew() {
               ...lines,
               `총액: ₩${formatMoney(result.total_fee || 0)}`,
             ].join('\n');
-            setMessages((prev) => [...prev, { role: 'model', content: summary }]);
+            const extras = renderExtraCombos(lineups, idToName);
+            setMessages((prev) => [...prev, { role: 'model', content: [summary, extras].filter(Boolean).join('\n\n') }]);
             return;
           }
           if (data.result_raw) {
@@ -193,6 +195,15 @@ export default function ChatNew() {
     // 숫자만
     const n = s.match(/(\d+)/);
     return n ? Number(n[1]) : 0;
+  }
+
+  function renderExtraCombos(list: Array<{ lineup: Array<{id:number;fee:number}>, total_fee: number }>, idToName: Map<number,string>) {
+    if (!Array.isArray(list) || list.length === 0) return '';
+    const items = list.slice(0,3).map((c, idx) => {
+      const names = c.lineup.map(e => idToName.get(e.id) || String(e.id)).join(', ');
+      return `${idx+1}조합: ${names} (총액 ₩${formatMoney(c.total_fee)})`;
+    });
+    return items.join('\n');
   }
 
   return (
