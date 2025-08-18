@@ -143,7 +143,7 @@ app.post('/api/threads/:id/chat', async (req, res) => {
 // Search + Generate lineup
 app.post('/api/lineup', async (req, res) => {
   try {
-    const { mood = '신나는', budget = 50000000, count = 3, festival = '', genre = '' } = req.body || {};
+    const { mood = '신나는', budget = 50000000, count = 3, festival = '', genre = '', prefer = [] } = req.body || {};
 
     // 1) get query embedding
     const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
@@ -228,15 +228,41 @@ app.post('/api/lineup', async (req, res) => {
       params
     );
 
+    // Ensure preferred artists are present in candidates
+    const preferNames = Array.isArray(prefer) ? prefer.map((n)=>String(n).trim()).filter(Boolean) : [];
+    let preferRows = [];
+    if (preferNames.length > 0) {
+      const lower = preferNames.map((n)=>n.toLowerCase());
+      const q = await pool.query(
+        `SELECT id,name,genre,appearance_fee,company_name
+         FROM artist_clean
+         WHERE lower(name) = ANY($1)`,
+        [lower]
+      );
+      preferRows = q.rows || [];
+    }
+
     await pool.end();
     await connector.close();
 
     // 3) Deterministic best-spend selection (maximize total_fee <= budget with exactly `count` artists)
-    const fees = candidates.map(c => ({ id: Number(c.id), fee: Number(c.appearance_fee) || 0 }));
+    // Merge preferred into candidate set
+    const byId = new Map();
+    for (const c of candidates) byId.set(Number(c.id), c);
+    for (const m of preferRows) byId.set(Number(m.id), m);
+    const merged = Array.from(byId.values());
+
+    const preferIdSet = new Set(preferRows.map((r)=>Number(r.id)));
+    const fees = merged.map(c => ({ id: Number(c.id), fee: Number(c.appearance_fee) || 0 }));
     let bestTotal = -1;
     let best = [];
     function choose(start, picked, total) {
       if (picked.length === count) {
+        // Enforce that all preferred IDs are included if specified
+        const pickedIds = new Set(picked.map(p=>p.id));
+        let preferSatisfied = true;
+        for (const pid of preferIdSet) { if (!pickedIds.has(pid)) { preferSatisfied = false; break; } }
+        if (!preferSatisfied) return;
         if (total <= budget && total > bestTotal) {
           bestTotal = total;
           best = [...picked];
