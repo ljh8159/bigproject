@@ -318,6 +318,22 @@ app.post('/api/lineup', async (req, res) => {
       }
     }
     choose(0, [], 0);
+
+    // If count is 2, also run a two-pointer maximizer as a safety net
+    if (count === 2) {
+      const sorted = [...fees].sort((a,b)=>a.fee-b.fee);
+      let i=0,j=sorted.length-1;
+      let tpBestTotal = -1; let tpBest = [];
+      while(i<j){
+        const s = sorted[i].fee + sorted[j].fee;
+        if (s>budget) { j--; continue; }
+        if (s>tpBestTotal) { tpBestTotal=s; tpBest=[sorted[i], sorted[j]]; }
+        if (s===budget) break; // optimal
+        i++;
+      }
+      if (tpBestTotal>bestTotal) { bestTotal=tpBestTotal; best=tpBest; }
+    }
+
     if (best.length === count) {
       return res.json({ candidates, result: { lineup: best, total_fee: bestTotal } });
     }
