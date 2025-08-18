@@ -55,5 +55,6 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --memory 512Mi \
-            --set-env-vars "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
+            --add-cloudsql-instances "${{ secrets.PG_CONNECTION_NAME }}" \
+            --set-env-vars "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},PG_CONNECTION_NAME=${{ secrets.PG_CONNECTION_NAME }},PG_USER=${{ secrets.PG_USER }},PG_PASS=${{ secrets.PG_PASS }},PG_DATABASE=${{ secrets.PG_DATABASE }}"
 
