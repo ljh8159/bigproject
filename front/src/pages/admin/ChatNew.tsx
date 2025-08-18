@@ -51,6 +51,41 @@ export default function ChatNew() {
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: userText }]);
 
+    // 라인업 추천 의도 감지 → 백엔드 /api/lineup 호출 후 응답을 채팅에 표시하고 종료
+    const intent = parseLineupIntent(userText);
+    if (intent) {
+      try {
+        const res = await fetch(`${API_BASE}/api/lineup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(intent),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const candidates: Array<{ id: string; name: string; appearance_fee: string }> = data.candidates || [];
+          const result = data.result || {};
+          if (Array.isArray(result.lineup)) {
+            const idToName = new Map<number, string>();
+            for (const c of candidates) idToName.set(Number(c.id), c.name);
+            const lines = result.lineup.map((e: { id: number; fee: number }) => `- ${idToName.get(e.id) || e.id} (₩${formatMoney(e.fee)})`);
+            const summary = [
+              `추천 라인업 (${intent.festival || '행사'}, ${intent.mood || '분위기'} / ${intent.count}명 / 예산 ₩${formatMoney(intent.budget)})`,
+              ...lines,
+              `총액: ₩${formatMoney(result.total_fee || 0)}`,
+            ].join('\n');
+            setMessages((prev) => [...prev, { role: 'model', content: summary }]);
+            return;
+          }
+          if (data.result_raw) {
+            setMessages((prev) => [...prev, { role: 'model', content: `라인업 결과(원문):\n${String(data.result_raw)}` }]);
+            return;
+          }
+        }
+      } catch {
+        // 의도 파싱 실패 시 일반 채팅 처리로 폴백
+      }
+    }
+
     try {
       const url = threadId ? `${API_BASE}/api/threads/${threadId}/chat` : `${API_BASE}/api/threads/new/chat`;
       const res = await fetch(url, {
@@ -75,6 +110,37 @@ export default function ChatNew() {
       ]);
     }
   };
+
+  function formatMoney(v: number) {
+    try { return Number(v || 0).toLocaleString('ko-KR'); } catch { return String(v); }
+  }
+
+  function parseLineupIntent(text: string): null | { festival?: string; mood?: string; budget: number; count: number } {
+    const t = text.replace(/\s+/g, ' ').trim();
+    // 예산: 숫자 + (만원|천만원|억)
+    const budgetRe = /(예산|budget)[^0-9]*([0-9][0-9,]*)\s*(만원|천만원|억)?/i;
+    const countRe = /([0-9]+)\s*명/;
+    const moodRe = /(분위기|mood)[^가-힣a-zA-Z]*([가-힣A-Za-z]+)/i;
+    const festivalRe = /([가-힣A-Za-z0-9]+)\s*(축제|페스티벌)/;
+
+    let budget = 0;
+    const b = t.match(budgetRe);
+    if (b) {
+      const num = Number((b[2] || '0').replace(/,/g, ''));
+      const unit = (b[3] || '').toString();
+      const mul = unit === '만원' ? 10000 : unit === '천만원' ? 10000000 : unit === '억' ? 100000000 : 1;
+      budget = num * mul;
+    }
+    const c = t.match(countRe);
+    const count = c ? Number(c[1]) : NaN;
+    const m = t.match(moodRe);
+    const mood = m ? m[2] : undefined;
+    const f = t.match(festivalRe);
+    const festival = f ? `${f[1]} 축제` : undefined;
+
+    if (!budget || !count || Number.isNaN(count)) return null;
+    return { festival, mood, budget, count };
+  }
 
   return (
     <div className="flex h-[calc(100vh-5.5rem)] flex-col space-y-4 overflow-hidden">
