@@ -294,6 +294,51 @@ app.post('/api/lineup', async (req, res) => {
 
     const preferIdSet = new Set(preferRows.map((r)=>Number(r.id)));
     const fees = merged.map(c => ({ id: Number(c.id), fee: Number(c.appearance_fee) || 0 }));
+
+    // If small team size, enumerate and return top 3 combos as well
+    if (count === 2 || count === 3) {
+      const sorted = [...fees].sort((a, b) => b.fee - a.fee);
+      const CAP = Math.min(sorted.length, 100);
+      const arr = sorted.slice(0, CAP);
+      const combos = [];
+      if (count === 2) {
+        for (let i = 0; i < arr.length; i++) {
+          for (let j = i + 1; j < arr.length; j++) {
+            const a = arr[i], b = arr[j];
+            const total = a.fee + b.fee;
+            if (total > budget) continue;
+            const picked = new Set([a.id, b.id]);
+            let ok = true;
+            for (const pid of preferIdSet) { if (!picked.has(pid)) { ok = false; break; } }
+            if (!ok) continue;
+            combos.push({ lineup: [a, b], total_fee: total });
+          }
+        }
+      } else {
+        for (let i = 0; i < arr.length; i++) {
+          for (let j = i + 1; j < arr.length; j++) {
+            for (let k = j + 1; k < arr.length; k++) {
+              const a = arr[i], b = arr[j], c = arr[k];
+              const total = a.fee + b.fee + c.fee;
+              if (total > budget) continue;
+              const picked = new Set([a.id, b.id, c.id]);
+              let ok = true;
+              for (const pid of preferIdSet) { if (!picked.has(pid)) { ok = false; break; } }
+              if (!ok) continue;
+              combos.push({ lineup: [a, b, c], total_fee: total });
+            }
+          }
+        }
+      }
+      combos.sort((x, y) => y.total_fee - x.total_fee);
+      const top3 = combos.slice(0, 3);
+      if (top3.length > 0) {
+        // Still compute best single result below, but include lineups for UI
+        // We'll continue to run the exact maximizer and then return at the end
+        // attaching lineups to the response.
+        var precomputedTop3 = top3; // var so it is visible later in scope
+      }
+    }
     let bestTotal = -1;
     let best = [];
     function choose(start, picked, total) {
@@ -335,6 +380,9 @@ app.post('/api/lineup', async (req, res) => {
     }
 
     if (best.length === count) {
+      if (typeof precomputedTop3 !== 'undefined' && Array.isArray(precomputedTop3) && precomputedTop3.length > 0) {
+        return res.json({ candidates, result: { lineup: best, total_fee: bestTotal }, lineups: precomputedTop3 });
+      }
       return res.json({ candidates, result: { lineup: best, total_fee: bestTotal } });
     }
 
@@ -372,7 +420,13 @@ app.post('/api/lineup', async (req, res) => {
           total += c.fee;
         }
       }
+      if (typeof precomputedTop3 !== 'undefined' && Array.isArray(precomputedTop3) && precomputedTop3.length > 0) {
+        return res.json({ candidates, result: { lineup, total_fee: total }, lineups: precomputedTop3, result_raw: raw });
+      }
       return res.json({ candidates, result: { lineup, total_fee: total }, result_raw: raw });
+    }
+    if (typeof precomputedTop3 !== 'undefined' && Array.isArray(precomputedTop3) && precomputedTop3.length > 0) {
+      return res.json({ candidates, result: parsed, lineups: precomputedTop3 });
     }
     res.json({ candidates, result: parsed });
   } catch (e) {
