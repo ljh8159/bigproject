@@ -8,7 +8,8 @@ import pg from 'pg';
 import { Connector } from '@google-cloud/cloud-sql-connector';
 
 const app = express();
-const port = process.env.PORT || 8080;
+// Cloud Run injects PORT. Fall back to 8080 locally.
+const port = Number(process.env.PORT) || 8080;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 app.use(cors());
@@ -146,8 +147,13 @@ app.post('/api/lineup', async (req, res) => {
 
     // 1) get query embedding
     const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
-    const queryText = `행사:${festival} 분위기:${mood} 예산:${budget}`;
-    const emb = await embedModel.embedContent(queryText);
+    // 일부 환경에서 비 ASCII 문자가 포함된 문자열을 bytes로 변환할 때 예외가 발생하는 문제가 있어
+    // 임베딩 입력은 ASCII 범위로 정규화해 사용합니다.
+    const normalizeAscii = (v) => String(v ?? '').replace(/[^\x00-\x7F]/g, '');
+    const asciiMood = normalizeAscii(mood) || 'upbeat';
+    const asciiFestival = normalizeAscii(festival) || 'festival';
+    const queryText = `festival:${asciiFestival} mood:${asciiMood} budget:${budget} count:${count}`;
+    const emb = await embedModel.embedContent({ content: { parts: [{ text: queryText }] } });
     const qvec = emb.embedding.values;
 
     // 2) PG connect via Cloud SQL Connector if available
@@ -181,11 +187,11 @@ app.post('/api/lineup', async (req, res) => {
 
     // 3) Ask Gemini 2.5 Pro to pick final lineup from candidates
     const genModel = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
-    const prompt = `후보 아티스트 중에서 분위기:${mood}, 예산:${budget}원, 인원:${count}명을 만족하는 라인업을 JSON으로만 제시하세요.
-JSON 스키마: {"lineup":[{"id":number,"name":string,"fee":number,"reason":string}],"total_fee":number}
-후보:
-${candidates.map(c => `- (${c.id}) ${c.name} | fee:${c.appearance_fee} | genre:${c.genre} | 회사:${c.company_name}`).join('\n')}`;
-    const out = await genModel.generateContent(prompt);
+    const prompt = `Select the best lineup from candidates under budget ${budget} for mood ${asciiMood}. ` +
+      `Return JSON only in schema {"lineup":[{"id":number,"fee":number}],"total_fee":number}.\n` +
+      `candidates:\n` +
+      candidates.map(c => `- (${c.id}) fee:${c.appearance_fee}`).join('\n');
+    const out = await genModel.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
     const text = out.response.text();
     res.json({ candidates, result: text });
   } catch (e) {
