@@ -331,7 +331,17 @@ app.post('/api/lineup', async (req, res) => {
         }
       }
       combos.sort((x, y) => y.total_fee - x.total_fee);
-      const top3 = combos.slice(0, 3);
+      // pick top 3 with no artist overlap across combos
+      const unique = [];
+      const usedIdsGlobal = new Set();
+      for (const c of combos) {
+        const overlap = c.lineup.some(e => usedIdsGlobal.has(e.id));
+        if (overlap) continue;
+        unique.push(c);
+        for (const e of c.lineup) usedIdsGlobal.add(e.id);
+        if (unique.length === 3) break;
+      }
+      const top3 = unique.length > 0 ? unique : combos.slice(0, 3);
       if (top3.length > 0) {
         // Still compute best single result below, but include lineups for UI
         // We'll continue to run the exact maximizer and then return at the end
