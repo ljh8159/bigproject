@@ -177,29 +177,22 @@ export default function ChatNew() {
   // 한글 혼합 금액 파서: "2억 2천", "2억2천만원", "8천만원", "5000만원" 등
   function parseKoreanBudget(raw: string): number {
     const s = String(raw).replace(/[,\s]/g, '');
-    // 1) x억y천(만원 생략 가능)
-    let m = s.match(/(\d+)억(\d+)천?만?원?/);
-    if (m) return Number(m[1]) * 100000000 + Number(m[2]) * 10000000;
-    // 2) x억
-    m = s.match(/(\d+)억(만?원?)?/);
-    if (m) return Number(m[1]) * 100000000;
-    // 3) y천만원 또는 y천만
-    m = s.match(/(\d+)천만(원)?/);
-    if (m) return Number(m[1]) * 10000000;
-    // 4) z만원
-    m = s.match(/(\d+)만(원)?/);
-    if (m) return Number(m[1]) * 10000;
-    // 5) 숫자 + 선택적 단위 (fallback)
-    m = s.match(/(\d+)(억|천만|만)?/);
-    if (m) {
-      const n = Number(m[1]);
-      const unit = m[2] || '';
-      if (unit.includes('억')) return n * 100000000;
-      if (unit.includes('천만')) return n * 10000000;
-      if (unit.includes('만')) return n * 10000;
-      return n; // 단위 없으면 원 가정
+    let total = 0;
+    // x억
+    let m = s.match(/(\d+)억/);
+    if (m) total += Number(m[1]) * 100000000;
+    // y천(만)
+    let k = s.match(/(\d+)천(만|만원)?/);
+    if (k) total += Number(k[1]) * 10000000;
+    // z만 (천만이 없는 경우에만 더함)
+    if (!k) {
+      const man = s.match(/(\d+)만(원)?/);
+      if (man) total += Number(man[1]) * 10000;
     }
-    return 0;
+    if (total > 0) return total;
+    // 숫자만
+    const n = s.match(/(\d+)/);
+    return n ? Number(n[1]) : 0;
   }
 
   return (
