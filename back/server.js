@@ -465,20 +465,58 @@ app.post('/api/lineup-agent', async (req, res) => {
       const { genre: g, maxFee, limit = 50 } = args || {};
       const lim = Math.min(Math.max(Number(limit) || 10, 1), 100);
       const fee = Math.max(Number(maxFee) || budget, 1);
-      const clauses = ['appearance_fee <= $1'];
-      const params = [fee];
-      if (g && String(g).trim()) {
-        clauses.push('genre ILIKE $2');
-        params.push(`%${g}%`);
+
+      function expandGenreTerms(input) {
+        const raw = String(input || '').toLowerCase();
+        const tokens = raw.split(/[,/\\&\s]+|와|과/).map(s => s.trim()).filter(Boolean);
+        const synonyms = (t) => {
+          if (!t) return [];
+          const s = t.toLowerCase();
+          if (s.includes('댄스') || s.includes('dance')) return ['댄스', 'dance'];
+          if (s.includes('소울') || s.includes('soul') || s.includes('r&b') || s.includes('알앤비')) return ['R&B/Soul', 'R&B', 'soul', '알앤비'];
+          if (s.includes('힙합') || s.includes('랩') || s.includes('hiphop') || s.includes('rap')) return ['랩/힙합', '힙합', '랩', 'hiphop', 'rap'];
+          if (s.includes('발라드') || s.includes('ballad')) return ['발라드', 'ballad'];
+          if (s.includes('록') || s.includes('메탈') || s.includes('rock') || s.includes('metal')) return ['록/메탈', 'rock', 'metal'];
+          if (s.includes('인디') || s.includes('indie')) return ['인디음악', 'indie'];
+          if (s.includes('트로트') || s.includes('성인가요')) return ['성인가요/트로트', '트로트'];
+          if (s.includes('포크') || s.includes('블루스') || s.includes('folk') || s.includes('blues')) return ['포크/블루스', 'folk', 'blues'];
+          if (s.includes('pop') || s.includes('팝')) return ['POP', 'pop'];
+          return [t];
+        };
+        const expanded = tokens.flatMap(synonyms);
+        return Array.from(new Set(expanded));
       }
-      const q = await pool.query(
+
+      const terms = g ? expandGenreTerms(g) : [];
+
+      let clauses = ['appearance_fee <= $1'];
+      let params = [fee];
+      if (terms.length > 0) {
+        const start = params.length + 1;
+        clauses.push('(' + terms.map((_, i) => `genre ILIKE $${start + i}`).join(' OR ') + ')');
+        for (const t of terms) params.push(`%${t}%`);
+      }
+      let rows = [];
+      const q1 = await pool.query(
         `SELECT id,name,genre,appearance_fee,company_name FROM artist_clean
          WHERE ${clauses.join(' AND ')}
          ORDER BY appearance_fee DESC
          LIMIT ${lim}`,
         params
       );
-      return q.rows || [];
+      rows = q1.rows || [];
+      if (rows.length === 0 && terms.length > 0) {
+        // Fallback without genre filter
+        const q2 = await pool.query(
+          `SELECT id,name,genre,appearance_fee,company_name FROM artist_clean
+           WHERE appearance_fee <= $1
+           ORDER BY appearance_fee DESC
+           LIMIT ${lim}`,
+          [fee]
+        );
+        rows = q2.rows || [];
+      }
+      return rows;
     }
 
     const tools = {
