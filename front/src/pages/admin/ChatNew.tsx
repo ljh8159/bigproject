@@ -119,7 +119,7 @@ export default function ChatNew() {
     const t = text.replace(/\s+/g, ' ').trim();
     // 예산: 숫자 + (만원|천만원|억)
     const budgetRe = /(예산|budget)[^0-9]*([0-9][0-9,]*)\s*(만원|천만원|억)?/i;
-    const countRe = /([0-9]+)\s*명/;
+    const countRe = /([0-9]+)\s*(명|팀|인)/; // 팀/인도 허용
     const moodRe = /(분위기|mood)[^가-힣a-zA-Z]*([가-힣A-Za-z]+)/i;
     const festivalRe = /([가-힣A-Za-z0-9]+)\s*(축제|페스티벌)/;
 
