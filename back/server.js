@@ -4,6 +4,8 @@ import cors from 'cors';
 import Database from 'better-sqlite3';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { nanoid } from 'nanoid';
+import pg from 'pg';
+import { Connector } from '@google-cloud/cloud-sql-connector';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -131,6 +133,61 @@ app.post('/api/threads/:id/chat', async (req, res) => {
     insertMessage.run(botMsgId, threadId, 'model', text, now());
 
     res.json({ reply: text, messageId: botMsgId, threadId });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Search + Generate lineup
+app.post('/api/lineup', async (req, res) => {
+  try {
+    const { mood = '신나는', budget = 50000000, count = 3, festival = '' } = req.body || {};
+
+    // 1) get query embedding
+    const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    const queryText = `행사:${festival} 분위기:${mood} 예산:${budget}`;
+    const emb = await embedModel.embedContent(queryText);
+    const qvec = emb.embedding.values;
+
+    // 2) PG connect via Cloud SQL Connector if available
+    const connector = new Connector();
+    const connection = await connector.getOptions({
+      instanceConnectionName: process.env.PG_CONNECTION_NAME, // project:region:instance
+    });
+    const pool = new pg.Pool({
+      ...connection,
+      user: process.env.PG_USER || 'postgres',
+      password: process.env.PG_PASS,
+      database: process.env.PG_DATABASE || 'artist',
+    });
+
+    const topK = Math.max(count * 5, 15);
+    // pg는 기본적으로 다중 문장을 한 번에 실행하지 않습니다. SET과 SELECT를 분리합니다.
+    await pool.query('SET ivfflat.probes = 10');
+    // pgvector는 벡터 리터럴 문자열('[v1,v2,...]')을 전달하고 ::vector로 캐스팅하는 것이 안전합니다.
+    const vecLiteral = `[${qvec.join(',')}]`;
+    const { rows: candidates } = await pool.query(
+      `SELECT id,name,genre,appearance_fee,company_name
+       FROM artist_clean
+       WHERE appearance_fee <= $2
+       ORDER BY embedding <=> $1::vector
+       LIMIT $3`,
+      [vecLiteral, budget, topK]
+    );
+
+    await pool.end();
+    await connector.close();
+
+    // 3) Ask Gemini 2.5 Pro to pick final lineup from candidates
+    const genModel = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
+    const prompt = `후보 아티스트 중에서 분위기:${mood}, 예산:${budget}원, 인원:${count}명을 만족하는 라인업을 JSON으로만 제시하세요.
+JSON 스키마: {"lineup":[{"id":number,"name":string,"fee":number,"reason":string}],"total_fee":number}
+후보:
+${candidates.map(c => `- (${c.id}) ${c.name} | fee:${c.appearance_fee} | genre:${c.genre} | 회사:${c.company_name}`).join('\n')}`;
+    const out = await genModel.generateContent(prompt);
+    const text = out.response.text();
+    res.json({ candidates, result: text });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e) });
