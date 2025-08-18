@@ -481,7 +481,7 @@ app.post('/api/lineup-agent', async (req, res) => {
       return q.rows || [];
     }
 
-    const tools = [{
+    const tools = {
       functionDeclarations: [
         {
           name: 'queryArtists',
@@ -496,7 +496,7 @@ app.post('/api/lineup-agent', async (req, res) => {
           },
         },
       ],
-    }];
+    };
 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro', tools });
     const sys = [
@@ -551,13 +551,18 @@ app.post('/api/lineup-agent', async (req, res) => {
         });
       }
 
-      // 2nd turn with tool response
+      // 2nd turn: provide toolResult as plain JSON context (avoids functionResponse schema issues)
+      const toolJson = JSON.stringify(toolResult).slice(0, 120000); // keep within limits
+      const follow = [
+        '아래는 DB에서 조회한 후보 JSON입니다. 이 데이터만 사용하여 조건을 만족하는 라인업을 고르세요.',
+        '반드시 JSON으로만 응답: {"lineup":[{"id":number,"fee":number}],"total_fee":number}',
+        toolJson,
+      ].join('\n');
       const r2 = await model.generateContent({
         contents: [
           { role: 'user', parts: [{ text: sys }] },
           { role: 'user', parts: [{ text: userPrompt }] },
-          { role: 'model', parts: [{ functionCall: call }] },
-          { role: 'tool', parts: [{ functionResponse: { name: call.name, response: toolResult } }] },
+          { role: 'user', parts: [{ text: follow }] },
         ],
       });
       final = (r2.response?.text?.() || '').trim();
@@ -565,16 +570,28 @@ app.post('/api/lineup-agent', async (req, res) => {
       final = (r1.response?.text?.() || '').trim();
     }
 
-    await pool.end();
-    await connector.close();
-
     // Try to parse JSON result
     const cleaned = final.replace(/```json|```/g, '').trim();
     let parsed;
     try { parsed = JSON.parse(cleaned); } catch {}
     if (parsed && Array.isArray(parsed.lineup)) {
-      return res.json({ ok: true, result: parsed, raw: final });
+      const ids = parsed.lineup.map((e)=>Number(e.id)).filter((v)=>Number.isFinite(v));
+      let enriched = parsed.lineup;
+      if (ids.length > 0) {
+        const q = await pool.query(
+          `SELECT id,name,appearance_fee FROM artist_clean WHERE id = ANY($1)`,
+          [ids]
+        );
+        const map = new Map();
+        for (const r of q.rows || []) map.set(Number(r.id), { name: r.name, fee: Number(r.appearance_fee)||0 });
+        enriched = parsed.lineup.map((e)=>({ id: Number(e.id), fee: Number(e.fee)||map.get(Number(e.id))?.fee||0, name: map.get(Number(e.id))?.name }));
+      }
+      await pool.end();
+      await connector.close();
+      return res.json({ ok: true, result: { lineup: enriched, total_fee: Number(parsed.total_fee)||enriched.reduce((s,x)=>s+(x.fee||0),0) }, raw: final });
     }
+    await pool.end();
+    await connector.close();
     return res.json({ ok: true, result_raw: final });
   } catch (e) {
     console.error(e);
