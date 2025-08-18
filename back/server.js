@@ -8,7 +8,7 @@ import pg from 'pg';
 import { Connector } from '@google-cloud/cloud-sql-connector';
 
 const app = express();
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 8080;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 app.use(cors());

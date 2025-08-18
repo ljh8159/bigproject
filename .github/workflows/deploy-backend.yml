@@ -54,7 +54,6 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
-            --port 4000 \
             --memory 512Mi \
             --set-env-vars "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
 
