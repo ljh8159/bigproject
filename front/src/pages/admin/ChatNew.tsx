@@ -69,7 +69,7 @@ export default function ChatNew() {
             for (const c of candidates) idToName.set(Number(c.id), c.name);
             const lines = result.lineup.map((e: { id: number; fee: number }) => `- ${idToName.get(e.id) || e.id} (₩${formatMoney(e.fee)})`);
             const summary = [
-              `추천 라인업 (${intent.festival || '행사'}, ${intent.mood || '분위기'} / ${intent.count}명 / 예산 ₩${formatMoney(intent.budget)})`,
+              `추천 라인업 (${intent.festival || '행사'}, ${intent.mood || '분위기'}${intent.genre?`/${intent.genre}`:''} / ${intent.count}명 / 예산 ₩${formatMoney(intent.budget)})`,
               ...lines,
               `총액: ₩${formatMoney(result.total_fee || 0)}`,
             ].join('\n');
@@ -125,13 +125,14 @@ export default function ChatNew() {
     try { return Number(v || 0).toLocaleString('ko-KR'); } catch { return String(v); }
   }
 
-  function parseLineupIntent(text: string): null | { festival?: string; mood?: string; budget: number; count: number } {
+  function parseLineupIntent(text: string): null | { festival?: string; mood?: string; budget: number; count: number; genre?: string } {
     const t = text.replace(/\s+/g, ' ').trim();
     // 예산: 숫자 + (만원|천만원|억)
     const budgetRe = /(예산|budget)[^0-9]*([0-9][0-9,]*)\s*(만원|천만원|억)?/i;
     const countRe = /([0-9]+)\s*(명|팀|인)/; // 팀/인도 허용
     const moodRe = /(분위기|mood)[^가-힣a-zA-Z]*([가-힣A-Za-z]+)/i;
     const festivalRe = /([가-힣A-Za-z0-9]+)\s*(축제|페스티벌)/;
+    const genreRe = /(장르|genre)[^가-힣a-zA-Z]*([가-힣A-Za-z/&]+)/i;
 
     let budget = 0;
     const b = t.match(budgetRe);
@@ -147,9 +148,12 @@ export default function ChatNew() {
     const mood = m ? m[2] : undefined;
     const f = t.match(festivalRe);
     const festival = f ? `${f[1]} 축제` : undefined;
+    const g = t.match(genreRe);
+    const rawGenre = g ? g[2] : undefined;
+    const genre = rawGenre ? normalizeGenre(rawGenre) : undefined;
 
     if (!budget || !count || Number.isNaN(count)) return null;
-    return { festival, mood, budget, count };
+    return { festival, mood, budget, count, genre };
   }
 
   function lineupGuideText(): string {
@@ -157,8 +161,22 @@ export default function ChatNew() {
       '라인업 추천을 위해 아래 형식으로 입력해 주세요:',
       '- 예: 머드 축제에 신나는 분위기로 3명 섭외해줘. 예산은 8천만원.',
       '- 필수: 예산(예: 5천만원/8천만원/1억), 인원수(예: 3명/3팀/3인)',
-      '- 선택: 행사/축제명, 분위기(예: 신나는/차분한/힙한 등)',
+      '- 선택: 행사/축제명, 분위기(예: 신나는/차분한/힙한 등), 장르(예: 장르는 댄스/힙합/발라드)',
     ].join('\n');
+  }
+
+  function normalizeGenre(v: string) {
+    const s = v.toLowerCase();
+    if (s.includes('댄스') || s.includes('dance')) return '댄스';
+    if (s.includes('발라드') || s.includes('ballad')) return '발라드';
+    if (s.includes('힙합') || s.includes('랩') || s.includes('hiphop') || s.includes('rap')) return '랩/힙합';
+    if (s.includes('r&b') || s.includes('알앤비')) return 'R&B/Soul';
+    if (s.includes('록') || s.includes('메탈') || s.includes('rock') || s.includes('metal')) return '록/메탈';
+    if (s.includes('인디') || s.includes('indie')) return '인디음악';
+    if (s.includes('트로트') || s.includes('성인가요')) return '성인가요/트로트';
+    if (s.includes('포크') || s.includes('블루스') || s.includes('folk') || s.includes('blues')) return '포크/블루스';
+    if (s.includes('pop') || s.includes('팝')) return 'POP';
+    return v;
   }
 
   return (
