@@ -55,7 +55,7 @@ export default function ChatNew() {
     const intent = parseLineupIntent(userText);
     if (intent) {
       try {
-        const res = await fetch(`${API_BASE}/api/lineup`, {
+        const res = await fetch(`${API_BASE}/api/lineup-agent`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(intent),
@@ -68,7 +68,7 @@ export default function ChatNew() {
           if (Array.isArray(result.lineup)) {
             const idToName = new Map<number, string>();
             for (const c of candidates) idToName.set(Number(c.id), c.name);
-            const lines = result.lineup.map((e: { id: number; fee: number }) => `- ${idToName.get(e.id) || e.id} (₩${formatMoney(e.fee)})`);
+            const lines = result.lineup.map((e: { id: number; fee: number; name?: string }) => `- ${idToName.get(e.id) || e.name || e.id} (₩${formatMoney(e.fee)})`);
             const summary = [
               `추천 라인업 (${intent.festival || '행사'}, ${intent.mood || '분위기'}${intent.genre ? `/${intent.genre}` : ''} / ${intent.count}명 / 예산 ₩${formatMoney(intent.budget)})`,
               ...lines,
