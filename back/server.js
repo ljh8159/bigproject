@@ -123,7 +123,7 @@ app.post('/api/threads/:id/chat', async (req, res) => {
     const userMsgId = nanoid();
     insertMessage.run(userMsgId, threadId, 'user', userText, now());
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
     const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: userText }] }] });
     const text = result.response.text() || '응답이 비어 있습니다.';
 
