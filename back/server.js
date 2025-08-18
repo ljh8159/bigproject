@@ -187,11 +187,15 @@ app.post('/api/lineup', async (req, res) => {
 
     // 3) Ask Gemini 2.5 Pro to pick final lineup from candidates
     const genModel = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
-    const prompt = `Select the best lineup from candidates under budget ${budget} for mood ${asciiMood}. ` +
-      `Return JSON only (no prose, no markdown fences) in schema {"lineup":[{"id":number,"fee":number}],"total_fee":number}.\n` +
-      `candidates:\n` +
-      candidates.map(c => `- (${c.id}) fee:${c.appearance_fee}`).join('\n');
-    const out = await genModel.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+    const slim = candidates.map(c => ({ id: Number(c.id), fee: Number(c.appearance_fee) || 0 }));
+    const prompt = `From the candidate artists, choose ${count} IDs under total budget ${budget} for mood ${asciiMood}. ` +
+      `Respond with JSON ONLY matching this schema: {"lineup":[{"id":number,"fee":number}],"total_fee":number}. ` +
+      `Do not include any text outside JSON.` +
+      `\nCandidates (id,fee):\n` + slim.map(c => `${c.id},${c.fee}`).join('\n');
+    const out = await genModel.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json' }
+    });
     const raw = out.response.text() || '';
     const cleaned = raw.replace(/```json|```/g, '').trim();
     let parsed;
@@ -204,8 +208,18 @@ app.post('/api/lineup', async (req, res) => {
         try { parsed = JSON.parse(cleaned.slice(start, end + 1)); } catch {}
       }
     }
-    if (!parsed || typeof parsed !== 'object') {
-      return res.json({ candidates, result_raw: raw });
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.lineup)) {
+      // Fallback: greedy lineup by cheapest fees under budget
+      const sorted = [...slim].sort((a, b) => a.fee - b.fee);
+      const lineup = [];
+      let total = 0;
+      for (const c of sorted) {
+        if (lineup.length < count && total + c.fee <= budget) {
+          lineup.push(c);
+          total += c.fee;
+        }
+      }
+      return res.json({ candidates, result: { lineup, total_fee: total }, result_raw: raw });
     }
     res.json({ candidates, result: parsed });
   } catch (e) {
