@@ -87,6 +87,10 @@ export default function ChatNew() {
             setMessages((prev) => [...prev, { role: 'model', content: `라인업 결과(원문):\n${String(data.result_raw)}` }]);
             return;
           }
+          if (typeof data.text === 'string' && data.text.trim().length > 0) {
+            setMessages((prev) => [...prev, { role: 'model', content: data.text }]);
+            return;
+          }
           // 예상 스키마 미일치
           setMessages((prev) => [...prev, { role: 'model', content: '라인업 에이전트 응답 형식이 올바르지 않습니다.' }]);
           return;

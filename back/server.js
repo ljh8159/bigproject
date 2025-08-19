@@ -569,8 +569,24 @@ app.post('/api/lineup-agent', async (req, res) => {
       `먼저 적합한 후보를 queryArtists로 조회한 후, 섭외비를 고려해 최종 lineup을 선택하세요.`,
     ].join('\n');
 
-    // 1st turn
-    let r1 = await model.generateContent({
+    // 1st turn (with light retry for transient 5xx)
+    async function callOnce(contents) {
+      return model.generateContent({ contents });
+    }
+    async function callWithRetry(contents) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          return await callOnce(contents);
+        } catch (e) {
+          const msg = String(e||'');
+          if (msg.includes('500') || msg.toLowerCase().includes('internal error')) {
+            if (attempt === 0) continue;
+          }
+          throw e;
+        }
+      }
+    }
+    let r1 = await callWithRetry({
       contents: [
         { role: 'user', parts: [{ text: sys }] },
         { role: 'user', parts: [{ text: userPrompt }] },
@@ -617,7 +633,7 @@ app.post('/api/lineup-agent', async (req, res) => {
       }
       followLines.push(toolJson);
       const follow = followLines.join('\n');
-      const r2 = await model.generateContent({
+      const r2 = await callWithRetry({
         contents: [
           { role: 'user', parts: [{ text: sys }] },
           { role: 'user', parts: [{ text: userPrompt }] },
