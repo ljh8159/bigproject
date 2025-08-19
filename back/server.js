@@ -11,6 +11,8 @@ const app = express();
 // Cloud Run injects PORT. Fall back to 8080 locally.
 const port = Number(process.env.PORT) || 8080;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// Feature flags
+const USE_EMBEDDING = String(process.env.USE_EMBEDDING || '').toLowerCase() === 'true';
 
 app.use(cors());
 app.use(express.json());
@@ -145,10 +147,7 @@ app.post('/api/lineup', async (req, res) => {
   try {
     const { mood = '신나는', budget = 50000000, count = 3, festival = '', genre = '', prefer = [] } = req.body || {};
 
-    // 1) get query embedding
-    const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
-    // 일부 환경에서 비 ASCII 문자가 포함된 문자열을 bytes로 변환할 때 예외가 발생하는 문제가 있어
-    // 임베딩 입력은 ASCII 범위로 정규화해 사용합니다.
+    // 1) (optional) embedding utilities
     const normalizeAscii = (v) => String(v ?? '').replace(/[^\x00-\x7F]/g, '');
     const mapKoreanMood = (m) => {
       const s = String(m||'').toLowerCase();
@@ -173,9 +172,6 @@ app.post('/api/lineup', async (req, res) => {
     const asciiMood = normalizeAscii(mapKoreanMood(mood));
     const asciiFestival = normalizeAscii(festival) || 'festival';
     const asciiGenre = normalizeAscii(mapKoreanGenre(genre));
-    const queryText = `festival:${asciiFestival} mood:${asciiMood}${asciiGenre?` genre:${asciiGenre}`:''} budget:${budget} count:${count}`;
-    const emb = await embedModel.embedContent({ content: { parts: [{ text: queryText }] } });
-    const qvec = emb.embedding.values;
 
     // 2) PG connect via Cloud SQL Connector if available
     const connector = new Connector();
@@ -190,43 +186,51 @@ app.post('/api/lineup', async (req, res) => {
     });
 
     const topK = Math.max(count * 50, 100);
-    // pg는 기본적으로 다중 문장을 한 번에 실행하지 않습니다. SET과 SELECT를 분리합니다.
-    await pool.query('SET ivfflat.probes = 10');
-    // pgvector는 벡터 리터럴 문자열('[v1,v2,...]')을 전달하고 ::vector로 캐스팅하는 것이 안전합니다.
-    const vecLiteral = `[${qvec.join(',')}]`;
-    const where = [ 'appearance_fee <= $2' ];
-    const params = [vecLiteral, budget, topK];
-    if (genre && String(genre).trim()) {
-      // Allow multiple genres separated by comma or slash; match Korean/English synonyms
-      const raw = String(genre).split(/[\/,|\s]+/).filter(Boolean);
-      const synonyms = (g) => {
-        const s = g.toLowerCase();
-        if (s.includes('댄스') || s.includes('dance')) return ['댄스', 'dance'];
-        if (s.includes('발라드') || s.includes('ballad')) return ['발라드', 'ballad'];
-        if (s.includes('힙합') || s.includes('랩') || s.includes('hiphop') || s.includes('rap')) return ['랩/힙합', '힙합', '랩', 'hiphop', 'rap'];
-        if (s.includes('soul') || s.includes('알앤비') || s.includes('r&b')) return ['R&B/Soul', 'soul', 'R&B'];
-        if (s.includes('록') || s.includes('메탈') || s.includes('rock') || s.includes('metal')) return ['록/메탈', 'rock', 'metal'];
-        if (s.includes('인디') || s.includes('indie')) return ['인디음악', 'indie'];
-        if (s.includes('트로트') || s.includes('성인가요')) return ['성인가요/트로트', '트로트'];
-        if (s.includes('포크') || s.includes('블루스') || s.includes('folk') || s.includes('blues')) return ['포크/블루스', 'folk', 'blues'];
-        if (s.includes('pop') || s.includes('팝')) return ['POP', 'pop'];
-        return [g];
-      };
-      const flat = raw.flatMap(synonyms);
-      if (flat.length > 0) {
-        const startIdx = params.length + 1;
-        where.push('(' + flat.map((_, i) => `genre ILIKE $${startIdx + i}`).join(' OR ') + ')');
-        for (const g of flat) params.push(`%${g}%`);
+    let candidatesVec = [];
+    if (USE_EMBEDDING) {
+      const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+      const queryText = `festival:${asciiFestival} mood:${asciiMood}${asciiGenre?` genre:${asciiGenre}`:''} budget:${budget} count:${count}`;
+      const emb = await embedModel.embedContent({ content: { parts: [{ text: queryText }] } });
+      const qvec = emb.embedding.values;
+      // pg는 기본적으로 다중 문장을 한 번에 실행하지 않습니다. SET과 SELECT를 분리합니다.
+      await pool.query('SET ivfflat.probes = 10');
+      // pgvector는 벡터 리터럴 문자열('[v1,v2,...]')을 전달하고 ::vector로 캐스팅하는 것이 안전합니다.
+      const vecLiteral = `[${qvec.join(',')}]`;
+      const where = [ 'appearance_fee <= $2' ];
+      const params = [vecLiteral, budget, topK];
+      if (genre && String(genre).trim()) {
+        // Allow multiple genres separated by comma or slash; match Korean/English synonyms
+        const raw = String(genre).split(/[\/,|\s]+/).filter(Boolean);
+        const synonyms = (g) => {
+          const s = g.toLowerCase();
+          if (s.includes('댄스') || s.includes('dance')) return ['댄스', 'dance'];
+          if (s.includes('발라드') || s.includes('ballad')) return ['발라드', 'ballad'];
+          if (s.includes('힙합') || s.includes('랩') || s.includes('hiphop') || s.includes('rap')) return ['랩/힙합', '힙합', '랩', 'hiphop', 'rap'];
+          if (s.includes('soul') || s.includes('알앤비') || s.includes('r&b')) return ['R&B/Soul', 'soul', 'R&B'];
+          if (s.includes('록') || s.includes('메탈') || s.includes('rock') || s.includes('metal')) return ['록/메탈', 'rock', 'metal'];
+          if (s.includes('인디') || s.includes('indie')) return ['인디음악', 'indie'];
+          if (s.includes('트로트') || s.includes('성인가요')) return ['성인가요/트로트', '트로트'];
+          if (s.includes('포크') || s.includes('블루스') || s.includes('folk') || s.includes('blues')) return ['포크/블루스', 'folk', 'blues'];
+          if (s.includes('pop') || s.includes('팝')) return ['POP', 'pop'];
+          return [g];
+        };
+        const flat = raw.flatMap(synonyms);
+        if (flat.length > 0) {
+          const startIdx = params.length + 1;
+          where.push('(' + flat.map((_, i) => `genre ILIKE $${startIdx + i}`).join(' OR ') + ')');
+          for (const g of flat) params.push(`%${g}%`);
+        }
       }
+      const q = await pool.query(
+        `SELECT id,name,genre,appearance_fee,company_name
+         FROM artist_clean
+         WHERE ${where.join(' AND ')}
+         ORDER BY embedding <=> $1::vector
+         LIMIT $3`,
+        params
+      );
+      candidatesVec = q.rows || [];
     }
-    const { rows: candidatesVec } = await pool.query(
-      `SELECT id,name,genre,appearance_fee,company_name
-       FROM artist_clean
-       WHERE ${where.join(' AND ')}
-       ORDER BY embedding <=> $1::vector
-       LIMIT $3`,
-      params
-    );
 
     // Also collect pure budget/genre candidates (increase budget weight)
     const where2 = ['appearance_fee <= $1'];
@@ -539,9 +543,11 @@ app.post('/api/lineup-agent', async (req, res) => {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro', tools });
     const sys = [
       `당신은 행사 라인업 기획자입니다.`,
-      `목표: 예산(${budget}) 이하에서 정확히 ${count}팀을 선택.`,
+      `목표: 예산(${budget}) 이하에서 정확히 ${count}팀의 조합을 3개 도출.`,
       `필요하면 queryArtists 함수를 호출하여 DB에서 후보를 조회하세요.`,
-      `출력은 반드시 JSON: {"lineup":[{"id":number,"fee":number}],"total_fee":number}`,
+      `항상 JSON만 반환(마크다운/설명 금지).`,
+      `JSON 스키마: {"lineup":[{"id":number,"fee":number}],"total_fee":number,"combos":[{"lineup":[{"id":number,"fee":number}],"total_fee":number},{...},{...}]}`,
+      `각 lineup은 서로 다른 아티스트로 구성, 총액은 budget 이하, 정확히 ${count}팀. combos는 최대 3개.`,
     ].join('\n');
 
     const userPrompt = [
@@ -590,10 +596,10 @@ app.post('/api/lineup-agent', async (req, res) => {
       }
 
       // 2nd turn: provide toolResult as plain JSON context (avoids functionResponse schema issues)
-      const toolJson = JSON.stringify(toolResult).slice(0, 120000); // keep within limits
+      const toolJson = JSON.stringify(toolResult).slice(0, 50000); // keep within limits
       const follow = [
-        '아래는 DB에서 조회한 후보 JSON입니다. 이 데이터만 사용하여 조건을 만족하는 라인업을 고르세요.',
-        '반드시 JSON으로만 응답: {"lineup":[{"id":number,"fee":number}],"total_fee":number}',
+        '아래는 DB에서 조회한 후보 JSON입니다. 이 데이터만 사용하여 조건을 만족하는 라인업 3개를 고르세요.',
+        '반드시 JSON으로만 응답: {"lineup":[{"id":number,"fee":number}],"total_fee":number,"combos":[{"lineup":[{"id":number,"fee":number}],"total_fee":number},{...},{...}]}',
         toolJson,
       ].join('\n');
       const r2 = await model.generateContent({
@@ -612,21 +618,21 @@ app.post('/api/lineup-agent', async (req, res) => {
     const cleaned = final.replace(/```json|```/g, '').trim();
     let parsed;
     try { parsed = JSON.parse(cleaned); } catch {}
-    if (parsed && Array.isArray(parsed.lineup)) {
-      const ids = parsed.lineup.map((e)=>Number(e.id)).filter((v)=>Number.isFinite(v));
-      let enriched = parsed.lineup;
-      if (ids.length > 0) {
-        const q = await pool.query(
-          `SELECT id,name,appearance_fee FROM artist_clean WHERE id = ANY($1)`,
-          [ids]
-        );
-        const map = new Map();
-        for (const r of q.rows || []) map.set(Number(r.id), { name: r.name, fee: Number(r.appearance_fee)||0 });
-        enriched = parsed.lineup.map((e)=>({ id: Number(e.id), fee: Number(e.fee)||map.get(Number(e.id))?.fee||0, name: map.get(Number(e.id))?.name }));
+    if (parsed && (Array.isArray(parsed.lineup) || Array.isArray(parsed.combos))) {
+      const idSet = new Set();
+      if (Array.isArray(parsed.lineup)) parsed.lineup.forEach(e=>idSet.add(Number(e.id)));
+      if (Array.isArray(parsed.combos)) parsed.combos.forEach(c => (c?.lineup||[]).forEach(e=>idSet.add(Number(e.id))));
+      let map = new Map();
+      if (idSet.size > 0) {
+        const q = await pool.query(`SELECT id,name,appearance_fee FROM artist_clean WHERE id = ANY($1)`, [[...idSet]]);
+        map = new Map(q.rows.map(r=>[Number(r.id), { name: r.name, fee: Number(r.appearance_fee)||0 }]));
       }
+      const enrich = (arr=[]) => arr.map(e=>({ id: Number(e.id), fee: Number(e.fee)||map.get(Number(e.id))?.fee||0, name: map.get(Number(e.id))?.name }));
+      const main = Array.isArray(parsed.lineup) ? enrich(parsed.lineup) : [];
+      const combos = Array.isArray(parsed.combos) ? parsed.combos.map(c=>({ lineup: enrich(c.lineup||[]), total_fee: Number(c.total_fee)||((c.lineup||[]).reduce((s,x)=>s+(Number(x.fee)||0),0)) })) : [];
       await pool.end();
       await connector.close();
-      return res.json({ ok: true, result: { lineup: enriched, total_fee: Number(parsed.total_fee)||enriched.reduce((s,x)=>s+(x.fee||0),0) }, raw: final });
+      return res.json({ ok: true, result: { lineup: main, total_fee: Number(parsed.total_fee)||main.reduce((s,x)=>s+(x.fee||0),0), combos }, raw: final });
     }
     await pool.end();
     await connector.close();
