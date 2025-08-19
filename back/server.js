@@ -13,6 +13,7 @@ const port = Number(process.env.PORT) || 8080;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 // Feature flags
 const USE_EMBEDDING = String(process.env.USE_EMBEDDING || '').toLowerCase() === 'true';
+const AGENT_JSON_ONLY = String(process.env.AGENT_JSON_ONLY || '').toLowerCase() === 'true';
 
 app.use(cors());
 app.use(express.json());
@@ -541,14 +542,23 @@ app.post('/api/lineup-agent', async (req, res) => {
     };
 
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro', tools });
-    const sys = [
+    const sysLines = [
       `당신은 행사 라인업 기획자입니다.`,
       `목표: 예산(${budget}) 이하에서 정확히 ${count}팀의 조합을 3개 도출.`,
       `필요하면 queryArtists 함수를 호출하여 DB에서 후보를 조회하세요.`,
-      `항상 JSON만 반환(마크다운/설명 금지).`,
-      `JSON 스키마: {"lineup":[{"id":number,"fee":number}],"total_fee":number,"combos":[{"lineup":[{"id":number,"fee":number}],"total_fee":number},{...},{...}]}`,
-      `각 lineup은 서로 다른 아티스트로 구성, 총액은 budget 이하, 정확히 ${count}팀. combos는 최대 3개.`,
-    ].join('\n');
+    ];
+    if (AGENT_JSON_ONLY) {
+      sysLines.push(
+        `항상 JSON만 반환(마크다운/설명 금지).`,
+        `JSON 스키마: {"lineup":[{"id":number,"fee":number}],"total_fee":number,"combos":[{"lineup":[{"id":number,"fee":number}],"total_fee":number},{...},{...}]}`
+      );
+    } else {
+      sysLines.push(
+        `응답 형식: 한국어, 간결한 텍스트. 조합 3개를 항목으로 제시하고 각 조합에 아티스트 이름과 섭외비, 총액을 표시.`,
+        `제약: 각 조합은 예산 이하, 정확히 ${count}팀, 같은 조합 내 중복 금지, 조합끼리도 멤버 중복 금지, 불필요한 설명 최소화.`
+      );
+    }
+    const sys = sysLines.join('\n');
 
     const userPrompt = [
       `festival=${festival || ''}`,
@@ -597,11 +607,16 @@ app.post('/api/lineup-agent', async (req, res) => {
 
       // 2nd turn: provide toolResult as plain JSON context (avoids functionResponse schema issues)
       const toolJson = JSON.stringify(toolResult).slice(0, 50000); // keep within limits
-      const follow = [
-        '아래는 DB에서 조회한 후보 JSON입니다. 이 데이터만 사용하여 조건을 만족하는 라인업 3개를 고르세요.',
-        '반드시 JSON으로만 응답: {"lineup":[{"id":number,"fee":number}],"total_fee":number,"combos":[{"lineup":[{"id":number,"fee":number}],"total_fee":number},{...},{...}]}',
-        toolJson,
-      ].join('\n');
+      const followLines = [
+        '아래는 DB에서 조회한 후보 JSON입니다. 이 데이터만 사용하여 조건을 만족하는 라인업 3개를 고르세요.'
+      ];
+      if (AGENT_JSON_ONLY) {
+        followLines.push('반드시 JSON으로만 응답: {"lineup":[{"id":number,"fee":number}],"total_fee":number,"combos":[{"lineup":[{"id":number,"fee":number}],"total_fee":number},{...},{...}]}');
+      } else {
+        followLines.push('응답은 간결한 한국어 텍스트로, 조합 3개를 항목으로 제시하고 이름·섭외비·총액만 포함하세요.');
+      }
+      followLines.push(toolJson);
+      const follow = followLines.join('\n');
       const r2 = await model.generateContent({
         contents: [
           { role: 'user', parts: [{ text: sys }] },
@@ -618,7 +633,7 @@ app.post('/api/lineup-agent', async (req, res) => {
     const cleaned = final.replace(/```json|```/g, '').trim();
     let parsed;
     try { parsed = JSON.parse(cleaned); } catch {}
-    if (parsed && (Array.isArray(parsed.lineup) || Array.isArray(parsed.combos))) {
+    if (AGENT_JSON_ONLY && parsed && (Array.isArray(parsed.lineup) || Array.isArray(parsed.combos))) {
       const idSet = new Set();
       if (Array.isArray(parsed.lineup)) parsed.lineup.forEach(e=>idSet.add(Number(e.id)));
       if (Array.isArray(parsed.combos)) parsed.combos.forEach(c => (c?.lineup||[]).forEach(e=>idSet.add(Number(e.id))));
@@ -647,7 +662,11 @@ app.post('/api/lineup-agent', async (req, res) => {
     }
     await pool.end();
     await connector.close();
-    return res.json({ ok: true, result_raw: final });
+    if (AGENT_JSON_ONLY) {
+      return res.json({ ok: false, result_raw: final });
+    }
+    // 자유 텍스트 모드: 원문 텍스트 그대로 반환
+    return res.json({ ok: true, text: final });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e) });
