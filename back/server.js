@@ -570,13 +570,13 @@ app.post('/api/lineup-agent', async (req, res) => {
     ].join('\n');
 
     // 1st turn (with light retry for transient 5xx)
-    async function callOnce(contents) {
-      return model.generateContent({ contents });
+    async function callOnce(contentsArray) {
+      return model.generateContent({ contents: contentsArray });
     }
-    async function callWithRetry(contents) {
+    async function callWithRetry(contentsArray) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          return await callOnce(contents);
+          return await callOnce(contentsArray);
         } catch (e) {
           const msg = String(e||'');
           if (msg.includes('500') || msg.toLowerCase().includes('internal error')) {
@@ -586,12 +586,10 @@ app.post('/api/lineup-agent', async (req, res) => {
         }
       }
     }
-    let r1 = await callWithRetry({
-      contents: [
-        { role: 'user', parts: [{ text: sys }] },
-        { role: 'user', parts: [{ text: userPrompt }] },
-      ],
-    });
+    let r1 = await callWithRetry([
+      { role: 'user', parts: [{ text: sys }] },
+      { role: 'user', parts: [{ text: userPrompt }] },
+    ]);
 
     function extractFunctionCalls(resp) {
       const calls = [];
@@ -633,13 +631,11 @@ app.post('/api/lineup-agent', async (req, res) => {
       }
       followLines.push(toolJson);
       const follow = followLines.join('\n');
-      const r2 = await callWithRetry({
-        contents: [
-          { role: 'user', parts: [{ text: sys }] },
-          { role: 'user', parts: [{ text: userPrompt }] },
-          { role: 'user', parts: [{ text: follow }] },
-        ],
-      });
+      const r2 = await callWithRetry([
+        { role: 'user', parts: [{ text: sys }] },
+        { role: 'user', parts: [{ text: userPrompt }] },
+        { role: 'user', parts: [{ text: follow }] },
+      ]);
       final = (r2.response?.text?.() || '').trim();
     } else {
       final = (r1.response?.text?.() || '').trim();
