@@ -83,8 +83,13 @@ export default function ChatNew() {
             return;
           }
         }
-      } catch {
-        // 의도 파싱 실패 시 일반 채팅 처리로 폴백
+        // 비정상 응답 처리
+        const txt = await res.text();
+        setMessages((prev) => [...prev, { role: 'model', content: `라인업 에이전트 호출 실패 (${res.status}): ${txt || '서버 오류'}` }]);
+        return;
+      } catch (err: any) {
+        setMessages((prev) => [...prev, { role: 'model', content: `라인업 에이전트 호출 실패: ${String(err)}` }]);
+        return;
       }
     }
 
