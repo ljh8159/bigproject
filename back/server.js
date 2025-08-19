@@ -565,7 +565,6 @@ app.post('/api/lineup-agent', async (req, res) => {
         { role: 'user', parts: [{ text: sys }] },
         { role: 'user', parts: [{ text: userPrompt }] },
       ],
-      generationConfig: { responseMimeType: 'application/json' },
     });
 
     function extractFunctionCalls(resp) {
@@ -609,7 +608,6 @@ app.post('/api/lineup-agent', async (req, res) => {
           { role: 'user', parts: [{ text: userPrompt }] },
           { role: 'user', parts: [{ text: follow }] },
         ],
-        generationConfig: { responseMimeType: 'application/json' },
       });
       final = (r2.response?.text?.() || '').trim();
     } else {
