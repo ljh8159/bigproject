@@ -565,6 +565,7 @@ app.post('/api/lineup-agent', async (req, res) => {
         { role: 'user', parts: [{ text: sys }] },
         { role: 'user', parts: [{ text: userPrompt }] },
       ],
+      generationConfig: { responseMimeType: 'application/json' },
     });
 
     function extractFunctionCalls(resp) {
@@ -608,6 +609,7 @@ app.post('/api/lineup-agent', async (req, res) => {
           { role: 'user', parts: [{ text: userPrompt }] },
           { role: 'user', parts: [{ text: follow }] },
         ],
+        generationConfig: { responseMimeType: 'application/json' },
       });
       final = (r2.response?.text?.() || '').trim();
     } else {
@@ -629,7 +631,18 @@ app.post('/api/lineup-agent', async (req, res) => {
       }
       const enrich = (arr=[]) => arr.map(e=>({ id: Number(e.id), fee: Number(e.fee)||map.get(Number(e.id))?.fee||0, name: map.get(Number(e.id))?.name }));
       const main = Array.isArray(parsed.lineup) ? enrich(parsed.lineup) : [];
-      const combos = Array.isArray(parsed.combos) ? parsed.combos.map(c=>({ lineup: enrich(c.lineup||[]), total_fee: Number(c.total_fee)||((c.lineup||[]).reduce((s,x)=>s+(Number(x.fee)||0),0)) })) : [];
+      // Normalize combos and enforce cross-combo uniqueness (no shared artists across combos)
+      const rawCombos = Array.isArray(parsed.combos) ? parsed.combos.map(c=>({ lineup: enrich(c.lineup||[]), total_fee: Number(c.total_fee)||((c.lineup||[]).reduce((s,x)=>s+(Number(x.fee)||0),0)) })) : [];
+      const uniqueCombos = [];
+      const used = new Set();
+      for (const c of rawCombos) {
+        const overlap = (c.lineup||[]).some(e => used.has(e.id));
+        if (overlap) continue;
+        uniqueCombos.push(c);
+        for (const e of c.lineup||[]) used.add(e.id);
+        if (uniqueCombos.length === 3) break;
+      }
+      const combos = uniqueCombos.length > 0 ? uniqueCombos : rawCombos.slice(0,3);
       await pool.end();
       await connector.close();
       return res.json({ ok: true, result: { lineup: main, total_fee: Number(parsed.total_fee)||main.reduce((s,x)=>s+(x.fee||0),0), combos }, raw: final });
