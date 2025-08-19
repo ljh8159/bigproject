@@ -60,6 +60,11 @@ export default function ChatNew() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(intent),
         });
+        if (!res.ok) {
+          const txt = await res.text();
+          setMessages((prev) => [...prev, { role: 'model', content: `라인업 에이전트 호출 실패 (${res.status}): ${txt || '서버 오류'}` }]);
+          return;
+        }
         if (res.ok) {
           const data = await res.json();
           const candidates: Array<{ id: string; name: string; appearance_fee: string }> = data.candidates || [];
@@ -82,11 +87,10 @@ export default function ChatNew() {
             setMessages((prev) => [...prev, { role: 'model', content: `라인업 결과(원문):\n${String(data.result_raw)}` }]);
             return;
           }
+          // 예상 스키마 미일치
+          setMessages((prev) => [...prev, { role: 'model', content: '라인업 에이전트 응답 형식이 올바르지 않습니다.' }]);
+          return;
         }
-        // 비정상 응답 처리
-        const txt = await res.text();
-        setMessages((prev) => [...prev, { role: 'model', content: `라인업 에이전트 호출 실패 (${res.status}): ${txt || '서버 오류'}` }]);
-        return;
       } catch (err: any) {
         setMessages((prev) => [...prev, { role: 'model', content: `라인업 에이전트 호출 실패: ${String(err)}` }]);
         return;
