@@ -11,6 +11,8 @@ const app = express();
 // Cloud Run injects PORT. Fall back to 8080 locally.
 const port = Number(process.env.PORT) || 8080;
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// Model selection: comma-separated list, we will try in order on 429/5xx
+const GEMINI_MODELS = (process.env.GEMINI_MODELS || 'gemini-2.5-pro,gemini-1.5-flash').split(',').map(s=>s.trim()).filter(Boolean);
 // Feature flags
 const USE_EMBEDDING = String(process.env.USE_EMBEDDING || '').toLowerCase() === 'true';
 const AGENT_JSON_ONLY = String(process.env.AGENT_JSON_ONLY || '').toLowerCase() === 'true';
@@ -129,14 +131,36 @@ app.post('/api/threads/:id/chat', async (req, res) => {
     const userMsgId = nanoid();
     insertMessage.run(userMsgId, threadId, 'user', userText, now());
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
-    const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: userText }] }] });
+    async function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+    async function genWithFallback(contentsArray){
+      const maxPerModel = 2;
+      for (let idx = 0; idx < GEMINI_MODELS.length; idx++) {
+        const modelName = GEMINI_MODELS[idx];
+        const model = genAI.getGenerativeModel({ model: modelName });
+        let delay = 600;
+        for (let attempt = 0; attempt < maxPerModel; attempt++) {
+          try {
+            const r = await model.generateContent({ contents: contentsArray });
+            return { r, modelName };
+          } catch (e) {
+            const msg = String(e||'');
+            if (msg.includes('429') || /too many requests|quota/i.test(msg) || msg.includes('500')) {
+              if (attempt < maxPerModel - 1) { await sleep(delay); delay *= 2; continue; }
+              break; // try next model
+            }
+            throw e;
+          }
+        }
+      }
+      throw new Error('All Gemini models failed due to quota or transient errors');
+    }
+    const { r: result, modelName: usedModel } = await genWithFallback([{ role: 'user', parts: [{ text: userText }] }]);
     const text = result.response.text() || '응답이 비어 있습니다.';
 
     const botMsgId = nanoid();
     insertMessage.run(botMsgId, threadId, 'model', text, now());
 
-    res.json({ reply: text, messageId: botMsgId, threadId });
+    res.json({ reply: text, messageId: botMsgId, threadId, model: usedModel });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e) });
@@ -541,7 +565,7 @@ app.post('/api/lineup-agent', async (req, res) => {
       ],
     };
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro', tools });
+    function makeModel(name){ return genAI.getGenerativeModel({ model: name, tools }); }
     const sysLines = [
       `당신은 행사 라인업 기획자입니다.`,
       `목표: 예산(${budget}) 이하에서 정확히 ${count}팀의 조합을 3개 도출.`,
@@ -569,27 +593,36 @@ app.post('/api/lineup-agent', async (req, res) => {
       `먼저 적합한 후보를 queryArtists로 조회한 후, 섭외비를 고려해 최종 lineup을 선택하세요.`,
     ].join('\n');
 
-    // 1st turn (with light retry for transient 5xx)
-    async function callOnce(contentsArray) {
-      return model.generateContent({ contents: contentsArray });
-    }
-    async function callWithRetry(contentsArray) {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          return await callOnce(contentsArray);
-        } catch (e) {
-          const msg = String(e||'');
-          if (msg.includes('500') || msg.toLowerCase().includes('internal error')) {
-            if (attempt === 0) continue;
+    // 1st turn with model fallback and backoff on 429/5xx
+    async function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+    async function callWithFallback(contentsArray){
+      const maxPerModel = 2;
+      for (let idx = 0; idx < GEMINI_MODELS.length; idx++) {
+        const modelName = GEMINI_MODELS[idx];
+        const model = makeModel(modelName);
+        let delay = 600;
+        for (let attempt = 0; attempt < maxPerModel; attempt++) {
+          try {
+            const r = await model.generateContent({ contents: contentsArray, generationConfig: AGENT_JSON_ONLY ? { responseMimeType: 'application/json' } : undefined });
+            return { r, modelName };
+          } catch (e) {
+            const msg = String(e||'');
+            if (msg.includes('429') || /too many requests|quota/i.test(msg) || msg.includes('500')) {
+              if (attempt < maxPerModel - 1) { await sleep(delay); delay *= 2; continue; }
+              break; // try next model
+            }
+            throw e;
           }
-          throw e;
         }
       }
+      throw new Error('All Gemini models failed due to quota or transient errors');
     }
-    let r1 = await callWithRetry([
+    const first = await callWithFallback([
       { role: 'user', parts: [{ text: sys }] },
       { role: 'user', parts: [{ text: userPrompt }] },
     ]);
+    let r1 = first.r;
+    let modelUsed = first.modelName;
 
     function extractFunctionCalls(resp) {
       const calls = [];
@@ -631,12 +664,13 @@ app.post('/api/lineup-agent', async (req, res) => {
       }
       followLines.push(toolJson);
       const follow = followLines.join('\n');
-      const r2 = await callWithRetry([
+      const second = await callWithFallback([
         { role: 'user', parts: [{ text: sys }] },
         { role: 'user', parts: [{ text: userPrompt }] },
         { role: 'user', parts: [{ text: follow }] },
       ]);
-      final = (r2.response?.text?.() || '').trim();
+      final = (second.r.response?.text?.() || '').trim();
+      modelUsed = second.modelName;
     } else {
       final = (r1.response?.text?.() || '').trim();
     }
@@ -670,15 +704,15 @@ app.post('/api/lineup-agent', async (req, res) => {
       const combos = uniqueCombos.length > 0 ? uniqueCombos : rawCombos.slice(0,3);
       await pool.end();
       await connector.close();
-      return res.json({ ok: true, result: { lineup: main, total_fee: Number(parsed.total_fee)||main.reduce((s,x)=>s+(x.fee||0),0), combos }, raw: final });
+      return res.json({ ok: true, result: { lineup: main, total_fee: Number(parsed.total_fee)||main.reduce((s,x)=>s+(x.fee||0),0), combos }, raw: final, model: modelUsed });
     }
     await pool.end();
     await connector.close();
     if (AGENT_JSON_ONLY) {
-      return res.json({ ok: false, result_raw: final });
+      return res.json({ ok: false, result_raw: final, model: modelUsed });
     }
     // 자유 텍스트 모드: 원문 텍스트 그대로 반환
-    return res.json({ ok: true, text: final });
+    return res.json({ ok: true, text: final, model: modelUsed });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: String(e) });
