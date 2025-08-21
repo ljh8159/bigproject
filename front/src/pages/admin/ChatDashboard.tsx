@@ -92,7 +92,13 @@ export default function ChatDashboard() {
     ),
   ];
 
-  const gachonIntro: JSX.Element = (
+  const gachonGreeting: JSX.Element = (
+    <div className="max-w-3xl rounded-md bg-muted/40 p-4">
+      <p>안녕하세요. 더메르센 에이전트 모델입니다. 원하시는 조건을 입력하시면 조건을 기반하여 추천 라인업을 구성해 드릴게요.</p>
+    </div>
+  );
+
+  const gachonAnswer: JSX.Element = (
     <div className="max-w-3xl rounded-md bg-muted/40 p-4">
       <p className="mb-3">
         요청해주신 조건(총 3팀, 댄스·힙합 중심, 예산 2억7천만 원)에 맞춰
@@ -126,7 +132,7 @@ export default function ChatDashboard() {
   ]);
   const [seoulMessages, setSeoulMessages] = useState<{ role: "ai" | "user"; node?: JSX.Element; text?: string }[]>([]);
   const [gachonMessages, setGachonMessages] = useState<{ role: "ai" | "user"; node?: JSX.Element; text?: string }[]>([
-    { role: "ai", node: gachonIntro },
+    { role: "ai", node: gachonGreeting },
   ]);
   const [nextBotIndex, setNextBotIndex] = useState(1);
   const [input, setInput] = useState("");
@@ -151,7 +157,7 @@ export default function ChatDashboard() {
       setTyping(false);
       setInput("");
     } else if (activeThread === "gachon") {
-      setGachonMessages([{ role: "ai", node: gachonIntro }]);
+      setGachonMessages([{ role: "ai", node: gachonGreeting }]);
       setTyping(false);
       setInput("");
     }
@@ -184,6 +190,11 @@ export default function ChatDashboard() {
     if (activeThread === "gachon") {
       setGachonMessages((m) => [...m, { role: "user", text: content }]);
       setInput("");
+      setTyping(true);
+      setTimeout(() => {
+        setGachonMessages((m) => [...m, { role: "ai", node: gachonAnswer }]);
+        setTyping(false);
+      }, 3000);
       return;
     }
 
@@ -376,6 +387,20 @@ export default function ChatDashboard() {
                       <div className="grid h-8 w-8 place-items-center rounded-full bg-secondary text-foreground">김</div>
                     </div>
                   )
+                )}
+                {typing && (
+                  <div className="flex items-start gap-3 animate-fade-in">
+                    <div className="grid h-8 w-8 place-items-center rounded-full bg-primary text-primary-foreground">
+                      <Bot className="h-4 w-4" />
+                    </div>
+                    <div className="max-w-3xl rounded-md bg-muted/40 p-4">
+                      <div className="flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full bg-muted-foreground/60 animate-pulse" />
+                        <span className="h-2 w-2 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:150ms]" />
+                        <span className="h-2 w-2 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:300ms]" />
+                      </div>
+                    </div>
+                  </div>
                 )}
               </>
             ) : (
