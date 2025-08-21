@@ -101,8 +101,8 @@ export default function ChatDashboard() {
   const gachonAnswer: JSX.Element = (
     <div className="max-w-3xl rounded-md bg-muted/40 p-4">
       <p className="mb-3">
-        요청해주신 조건(총 3팀, 댄스·힙합 중심, 예산 2억7천만 원)에 맞춰
-        <span className="chat-highlight text-primary">산다라박, 다이나믹듀오, 크러쉬</span> 라인업을 추천드립니다.
+        요청해주신 조건(총 8팀, 댄스·힙합 중심, 예산 5억)에 맞춰
+        <span className="chat-highlight text-primary">산다라박, 크러쉬, 다이나믹듀오, 권은비,청하, 박재범(Jay Park), 빅나티, 스윙스</span> 라인업을 추천드립니다.
       </p>
       <div className="mb-3">
         <div className="font-semibold">예산 배분</div>
@@ -110,8 +110,13 @@ export default function ChatDashboard() {
           <li>• 산다라박 – 150,000,000원</li>
           <li>• 크러쉬 – 70,000,000원</li>
           <li>• 다이나믹듀오 – 50,000,000원</li>
+          <li>• 권은비 – 47,500,000원</li>
+          <li>• 청하 – 45,000,000원</li>
+          <li>• 박재범(Jay Park) – 72,500,000원</li>
+          <li>• 빅나티 – 25,000,000원</li>
+          <li>• 스윙스 – 35,000,000원</li>
         </ul>
-        <div className="text-sm mt-2">총합 = <b>270,000,000원</b> (예산 내 정확히 충족)</div>
+        <div className="text-sm mt-2">총합 = <b>495,000,000원</b> (조건 기반 라인업 구성)</div>
       </div>
       <div className="mb-3">
         <div className="font-semibold">선정 근거</div>
