@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import SeoulFestivalThread, { SeoulFestivalAnswer } from "./threads/SeoulFestivalThread";
+import { GachonFestivalAnswer } from "./threads/GachonFestivalThread";
 export default function ChatDashboard() {
   const [activeThread, setActiveThread] = useState<"samsung" | "seoul" | "gachon">("samsung");
   const location = useLocation();
@@ -197,7 +198,7 @@ export default function ChatDashboard() {
       setInput("");
       setTyping(true);
       setTimeout(() => {
-        setGachonMessages((m) => [...m, { role: "ai", node: gachonAnswer }]);
+        setGachonMessages((m) => [...m, { role: "ai", node: <GachonFestivalAnswer /> }]);
         setTyping(false);
       }, 3000);
       return;
