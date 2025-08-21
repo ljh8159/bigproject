@@ -35,7 +35,7 @@ export default function ChatDashboard() {
         </p>
         <p className="mb-3">
           8월 내 출시 예정인 삼성전자의 신제품 행사에
-          <span className="chat-highlight text-primary"> 아이유, 적재, 에픽하이</span>
+          <span className="chat-highlight text-primary"> 산다라박, 다이나믹듀오, 권은비</span>
           를 메인 라인업으로 제안하는 것이 어떨까요? 최근 아이유의 인기, 적재의 음악성, 에픽하이의 대중적 인지도를 고려할 때 매우 효과적일 것으로 분석됩니다.
         </p>
         <p>
@@ -45,21 +45,38 @@ export default function ChatDashboard() {
     ),
     (
       <div className="max-w-3xl rounded-md bg-muted/40 p-4">
-        <p className="mb-3">네, 자세히 설명드리겠습니다.</p>
-        <p className="mb-3">
-          <span className="font-semibold text-primary">아이유</span>는 최근 새 앨범이 2500만 스트리밍을 달성했으며, 20-30대 소비자층에게 96% 호감도를 기록하고 있습니다. 갤럭시의 주요 타겟층과 정확히 일치합니다.
-        </p>
-        <p className="mb-3">
-          <span className="font-semibold text-primary">적재</span>는 인디 음악계의 대표 기타리스트로, 최근 콜라보레이션 앨범으로 스트리밍 차트 상위권을 유지하고 있습니다. 특히 감성적인 곡들로 2030 세대에게 높은 평가를 받고 있어 갤럭시의 감성적 브랜딩에 적합합니다.
-        </p>
-        <p className="mb-3">
-          <span className="font-semibold text-primary">에픽하이</span>는 국내 힙합 음악의 대표주자로, 장수 그룹이지만 꾸준히 신곡을 발매하며 대중성과 음악성을 모두 인정받고 있습니다. 특히 남녀노소 모두에게 사랑받는 음악 스타일로 제품의 폭넓은 소구력을 강화할 수 있습니다.
-        </p>
-        <p className="mb-3">
-          세 아티스트를 함께 섭외함으로써 다양한 연령층과 취향에 동시에 어필할 수 있습니다. 삼성전자의 브랜드 이미지와도 매우 적합하며, 런칭쇼 영상이 SNS에서 바이럴 컨텐츠가 될 가능성이 높습니다.
-        </p>
-        <p>추가로, 예상 미디어 노출 효과는 약 15억원 상당으로 예측됩니다. 투자 대비 약 2.7배의 마케팅 효과를 기대할 수 있습니다.</p>
-      </div>
+  <p className="mb-3">
+    요청해주신 조건(총 3팀, 댄스·힙합 중심, 예산 2억7천만 원)에 맞춰 
+    <span className="chat-highlight text-primary">산다라박, 다이나믹듀오, 크러쉬</span> 
+    라인업을 추천드립니다.
+  </p>
+
+  <div className="mb-3">
+    <div className="font-semibold">예산 배분</div>
+    <ul className="text-sm leading-6">
+      <li>• 산다라박 – 150,000,000원</li>
+      <li>• 크러쉬 – 70,000,000원</li>
+      <li>• 다이나믹듀오 – 50,000,000원</li>
+    </ul>
+    <div className="text-sm mt-2">총합 = <b>270,000,000원</b> (예산 내 정확히 충족)</div>
+  </div>
+
+  <div className="mb-3">
+    <div className="font-semibold">선정 근거</div>
+    <ul className="text-sm leading-6">
+  <li>• <b>산다라박</b> (₩150,000,000): 대중적 인지도 + 레트로·트렌디 이미지로 전 세대 공감대 형성</li>
+  <li>• <b>다이나믹듀오</b> (₩50,000,000): 히트곡 다수와 강한 콜&리스폰스로 현장 에너지 극대화</li>
+  <li>• <b>크러쉬</b> (₩70,000,000): 보컬·댄스 퍼포먼스로 중후반 무대 몰입과 SNS 확산 효과 기대</li>
+</ul>
+
+  </div>
+
+  <p className="text-sm">
+    세 팀의 조합으로 대중성 × 현장 에너지 × 트렌디함을 모두 충족시켜, 
+    가천대 축제에 최적화된 라인업이 완성됩니다.
+  </p>
+</div>
+
     ),
     (
       <div className="max-w-3xl rounded-md bg-muted/40 p-4">
