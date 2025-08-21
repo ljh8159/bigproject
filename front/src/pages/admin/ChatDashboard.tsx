@@ -20,67 +20,70 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import SeoulFestivalThread, { SeoulFestivalAnswer } from "./threads/SeoulFestivalThread";
+
 export default function ChatDashboard() {
-  const [activeThread, setActiveThread] = useState<"samsung" | "seoul">("samsung");
+  const [activeThread, setActiveThread] = useState<"samsung" | "seoul">("seoul");
   const location = useLocation();
 
-  // Predefined bot responses (same content as 기존 자동 재생)
+  // Predefined bot responses (Seoul Univ. Festival)
   const botSteps: JSX.Element[] = [
     (
       <div className="max-w-3xl rounded-md bg-muted/40 p-4">
         <p className="mb-3">
           안녕하세요, 김희연 관리자님. 오늘은
-          <span className="chat-highlight font-semibold text-primary"> 삼성전자의 신제품 갤럭시 Z 폴드 5 런칭쇼</span>
-          에 대한 제안을 드리고자 합니다.
+          <span className="chat-highlight font-semibold text-primary"> 가천대학교 축제</span>
+          라인업 제안을 드립니다.
         </p>
         <p className="mb-3">
-          8월 내 출시 예정인 삼성전자의 신제품 행사에
-          <span className="chat-highlight text-primary"> 산다라박, 다이나믹듀오, 권은비</span>
-          를 메인 라인업으로 제안하는 것이 어떨까요? 최근 아이유의 인기, 적재의 음악성, 에픽하이의 대중적 인지도를 고려할 때 매우 효과적일 것으로 분석됩니다.
+          요청하신 조건(댄스·힙합 중심)과 타깃(재학생 위주)을 반영해
+          <span className="chat-highlight text-primary"> 최종 8팀 라인업</span>을 구성했습니다.
         </p>
-        <p>
-          예상 예산은 <span className="chat-highlight text-primary">5억 5천만원</span> 선으로, 런칭쇼의 규모와 영향력을 고려했을 때 투자 대비 효과가 높을 것으로 예측됩니다. 어떻게 생각하시나요?
+
+        <div className="mb-3">
+          <div className="font-semibold">최종 추천 라인업 및 섭외비</div>
+          <ul className="text-sm leading-6">
+            <li>• 크러쉬 – 70,000,000원</li>
+            <li>• 산다라박 – 150,000,000원</li>
+            <li>• 권은비 – 47,500,000원</li>
+            <li>• 청하 – 45,000,000원</li>
+            <li>• 다이나믹듀오 – 50,000,000원</li>
+            <li>• 박재범(Jay Park) – 72,500,000원</li>
+            <li>• 빅나티 – 25,000,000원</li>
+            <li>• 스윙스 – 35,000,000원</li>
+          </ul>
+        </div>
+
+        <p className="text-sm text-muted-foreground">
+          * 운영·무대·안전 등 부대비용은 별도 산정 가능. 러닝타임/세트 전환/합동 엔딩 시나리오도 요청 시 제공.
         </p>
       </div>
     ),
     (
       <div className="max-w-3xl rounded-md bg-muted/40 p-4">
-  <p className="mb-3">
-    요청해주신 조건(총 3팀, 댄스·힙합 중심, 예산 2억7천만 원)에 맞춰 
-    <span className="chat-highlight text-primary">산다라박, 다이나믹듀오, 크러쉬</span> 
-    라인업을 추천드립니다.
-  </p>
+        <p className="mb-3">아티스트별 선정 근거를 간단·명료하게 정리했습니다.</p>
 
-  <div className="mb-3">
-    <div className="font-semibold">예산 배분</div>
-    <ul className="text-sm leading-6">
-      <li>• 산다라박 – 150,000,000원</li>
-      <li>• 크러쉬 – 70,000,000원</li>
-      <li>• 다이나믹듀오 – 50,000,000원</li>
-    </ul>
-    <div className="text-sm mt-2">총합 = <b>270,000,000원</b> (예산 내 정확히 충족)</div>
-  </div>
+        <div className="mb-3">
+          <div className="font-semibold">선정 근거</div>
+          <ul className="text-sm leading-6">
+            <li>• <b>크러쉬 (₩70,000,000)</b>: R&amp;B/힙합 보컬 퍼포먼스로 중후반 몰입·싱어롱 유도 용이</li>
+            <li>• <b>산다라박 (₩150,000,000)</b>: 대중적 인지도와 세련된 이미지, 진행/토크 가능으로 흐름 안정</li>
+            <li>• <b>권은비 (₩47,500,000)</b>: 퍼포먼스·보컬 균형, Z세대 팬덤과 릴스·숏폼 확산 기대</li>
+            <li>• <b>청하 (₩45,000,000)</b>: 댄스 중심 솔로 무대 강점, 분위기 고조 및 비주얼 임팩트</li>
+            <li>• <b>다이나믹듀오 (₩50,000,000)</b>: 히트곡 다수·콜앤리스폰스로 현장 에너지 극대화</li>
+            <li>• <b>박재범 (₩72,500,000)</b>: 글로벌 팬덤, 힙합/R&amp;B 무대 경험 풍부, SNS 확산 효과 큼</li>
+            <li>• <b>빅나티 (₩25,000,000)</b>: 1020 중심 트렌디 감각, 신예 파워로 타깃 친화</li>
+            <li>• <b>스윙스 (₩35,000,000)</b>: 존재감 있는 랩 퍼포먼스로 무대 긴장감 유지 및 힙합 팬층 공략</li>
+          </ul>
+        </div>
 
-  <div className="mb-3">
-    <div className="font-semibold">선정 근거</div>
-    <ul className="text-sm leading-6">
-  <li>• <b>산다라박</b> (₩150,000,000): 대중적 인지도 + 레트로·트렌디 이미지로 전 세대 공감대 형성</li>
-  <li>• <b>다이나믹듀오</b> (₩50,000,000): 히트곡 다수와 강한 콜&리스폰스로 현장 에너지 극대화</li>
-  <li>• <b>크러쉬</b> (₩70,000,000): 보컬·댄스 퍼포먼스로 중후반 무대 몰입과 SNS 확산 효과 기대</li>
-</ul>
-
-  </div>
-
-  <p className="text-sm">
-    세 팀의 조합으로 대중성 × 현장 에너지 × 트렌디함을 모두 충족시켜, 
-    가천대 축제에 최적화된 라인업이 완성됩니다.
-  </p>
-</div>
-
+        <p className="text-sm">
+          본 라인업은 <b>대중성 × 현장 에너지 × 트렌디함</b>을 균형 있게 충족하여, 다양한 세대와 취향을 아우르는 축제 무대 구성에 적합함.
+        </p>
+      </div>
     ),
     (
       <div className="max-w-3xl rounded-md bg-muted/40 p-4">
-        <p className="mb-4">감사합니다! 삼성전자에 제안하실 때 도움이 되도록 아래 자료들을 바로 확인하실 수 있습니다.</p>
+        <p className="mb-4">다음 자료로 바로 진행 가능합니다.</p>
         <div className="flex flex-wrap gap-3">
           <Button asChild className="gap-2">
             <Link to="/admin/chat/proposal">
@@ -97,7 +100,7 @@ export default function ChatDashboard() {
     ),
     (
       <div className="max-w-3xl rounded-md bg-muted/40 p-4">
-        <p className="mb-4">축하드립니다! 빠른 승인을 받으셨네요. 삼성전자 런칭쇼 계약을 위한 계약서를 바로 준비해드리겠습니다.</p>
+        <p className="mb-4">확정 시 계약서 초안으로 이어집니다.</p>
         <div className="flex flex-wrap gap-3">
           <Button asChild className="gap-2">
             <Link to="/admin/chat/contract">
@@ -128,6 +131,7 @@ export default function ChatDashboard() {
 
   useEffect(() => {
     if (activeThread === "samsung") {
+      // 삼성 쓰레드도 서울 템플릿로 시작하도록 통일
       setMessages([{ role: "ai", node: botSteps[0] }]);
       setNextBotIndex(1);
       setTyping(false);
@@ -176,8 +180,8 @@ export default function ChatDashboard() {
   return (
     <div className="flex h-[calc(100vh-5.5rem)] flex-col space-y-4 overflow-hidden">
       <SEO
-        title="챗봇 인터페이스 - 삼성전자 런칭쇼 | Celefix"
-        description="삼성전자 런칭쇼 제안 대화 인터페이스"
+        title="챗봇 인터페이스 - 가천대 축제 | Celefix"
+        description="가천대 축제 라인업 제안 대화 인터페이스"
       />
 
       {/* Chat container */}
@@ -227,8 +231,8 @@ export default function ChatDashboard() {
                   data-active={activeThread === "samsung"}
                   onClick={() => setActiveThread("samsung")}
                 >
-                  <div className="text-sm font-medium">삼성전자 런칭쇼 제안</div>
-                  <div className="truncate text-xs text-muted-foreground">아이유, 적재, 에픽하이 라인업 제안...</div>
+                  <div className="text-sm font-medium">가천대 축제 제안</div>
+                  <div className="truncate text-xs text-muted-foreground">댄스·힙합 8팀 라인업 제안...</div>
                 </li>
                 <li className="chat-item cursor-pointer rounded-md border border-border bg-muted/30 p-3 transition hover:bg-muted/40">
                   <div className="text-sm font-medium">LG 신제품 발표회</div>
@@ -259,7 +263,7 @@ export default function ChatDashboard() {
                   data-active={activeThread === "seoul"}
                   onClick={() => setActiveThread("seoul")}
                 >
-                  <div className="text-sm font-medium">서울대 축제 제안</div>
+                  <div className="text-sm font-medium">가천대 축제 제안</div>
                   <div className="truncate text-xs text-muted-foreground">축제 라인업 추천 및 분석</div>
                 </li>
                 <li className="chat-item cursor-pointer rounded-md border border-border bg-muted/30 p-3 transition hover:bg-muted/40">
@@ -274,7 +278,6 @@ export default function ChatDashboard() {
             </div>
 
             <Separator className="my-3" />
-
           </div>
         </aside>
 
@@ -282,7 +285,7 @@ export default function ChatDashboard() {
         <section className="flex w-3/4 flex-col">
           {/* Header */}
           <header className="flex items-center justify-between border-b border-border p-4">
-            <h2 className="text-lg font-semibold">{activeThread === "samsung" ? "삼성전자 런칭쇼 제안" : "서울대 축제 제안"}</h2>
+            <h2 className="text-lg font-semibold">가천대 축제 제안</h2>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Share2 className="h-4 w-4 cursor-pointer hover:text-foreground" />
               <MoreVertical className="h-4 w-4 cursor-pointer hover:text-foreground" />
